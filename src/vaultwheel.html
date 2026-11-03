@@ -780,6 +780,10 @@ renderer.shadowMap.type = LITE ? THREE.PCFShadowMap : THREE.PCFSoftShadowMap;
 // leaves the map as it is
 renderer.shadowMap.autoUpdate = false;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
+// what is solid is drawn one kind at a time, nearest first, and the tube last. three's own order goes by material, and every card
+// has its own, so it changed shader for nearly every draw (each change sends the camera and the lights again), and shaded all the
+// tube behind the cards, its costliest pixels, before covering it. the depth test gives the same picture in any order
+renderer.setOpaqueSort((a, b) => a.groupOrder - b.groupOrder || a.renderOrder - b.renderOrder || (a.material.vwPass || 0) - (b.material.vwPass || 0) || a.z - b.z || a.id - b.id);
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(T.FOV, 1, 0.05, 400);
 let FOCUS_ANGLE = 0.4;
@@ -798,6 +802,7 @@ const cylUniforms = { uTime: { value: 0 }, uA: { value: new THREE.Color() }, uB:
 // the color under the theme's moving picture (uSky)
 cylUniforms.uBase = { value: new THREE.Color() };
 const cylMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.55, metalness: 0.0, side: THREE.FrontSide });
+cylMat.vwPass = 2;      // (last, see setOpaqueSort)
 cylMat.onBeforeCompile = sh => {
   Object.assign(sh.uniforms, cylUniforms);
   sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vLocal;')
@@ -2036,7 +2041,7 @@ function glowGradTex(dir) {
 function underMaterial(it, aspect) {
   const mat = new THREE.MeshStandardMaterial({ map: it.isDir ? barTex(it.ref) : underTex(it.kind), roughness: 0.55, metalness: 0, shadowSide: THREE.DoubleSide });
   const u = { uFocus: { value: 0 }, uDark: { value: themeIsDark() ? 1 : 0 }, uAsp: { value: aspect } };
-  mat.userData.u = u;
+  mat.userData.u = u; mat.vwPass = 1;
   // in focus the plate glows in its own colors and gets a bright rim, also in its own colors (each bar keeps its color)
   mat.onBeforeCompile = sh => {
     Object.assign(sh.uniforms, u);
@@ -2271,6 +2276,7 @@ function rowStops(w, rows) {
 // (w.stops)
 function layout(w) {
   w.packs = (w.packs || 0) + 1;      // (for the tests)
+  shadowUntil = performance.now() + 1200;
   if (w.learned && w.learned.size) { for (const it of w.learned) if (it.arNext) takeShape(it); w.learned.clear(); }
   const sh = w.level === 0 && !w.dying ? shapeOf(scaleOf(w.dir)) : BASE_SHAPE;
   w.shape = sh; w.place = []; w.centers = []; w.stops = null; w.tiles = false; w.fits = false;
@@ -2694,8 +2700,8 @@ function placeWheel(w, dt, now) {
   // the hole a picked card leaves closes from the side away from the focus
   if (w.holeA || w.holeB) { w.holeA = damp(w.holeA, 0, 12, dt); w.holeB = damp(w.holeB, 0, 12, dt); if (Math.abs(w.holeA) + Math.abs(w.holeB) < 1e-4) w.holeA = w.holeB = 0; }
   // which items are on the visible half of the wheel (entries are keyed by item and survive refreshes and level changes)
-  const want = new Map();
-  const ang = new Array(n);
+  // (the two are kept with the column: this runs every frame, for every column)
+  const want = w.want || (w.want = new Map()), ang = w.ang || (w.ang = []); want.clear();
   // a mosaic holds many cards a row, so it keeps only those up to just past the tube's rim, where they go out of sight
   const band = w.stops && solved ? Math.min(1.95, rimHalf(flip.t) + 0.15) : 1.95;
   // the places run down the curve in order, so with nothing easing the cards about (no closing hole) the cards on the
@@ -2771,7 +2777,7 @@ function placeWheel(w, dt, now) {
   if (w.fvBlend) { const f = (now - w.fvBlend.t0) / 240; if (f >= 1) w.fvBlend = null; else fv = lerp(w.fvBlend.from, fvWant, f * f * (3 - 2 * f)); }
   w.fvNow = fv;
   const blurLen = w.level === 0 && !w.dying && w.spinK === INTRO_K && !reduceMotion.matches ? Math.abs(w.v) * (T.TEXT_H + T.GAP) * 0.006 : 0;
-  for (const [, e] of w.entries) {
+  for (const e of w.entries.values()) {
     e.card.material.userData.blur.value = Math.min(0.12, blurLen / e.h);
     let op = w.alpha;
     if (grad) { const g = clamp(0.5 + (FOCUS_ANGLE - ang[e.index]) / 3.9, 0, 1), f = clamp((w.alpha - 0.55 * g) / 0.45, 0, 1); op = f * f * (3 - 2 * f); }
@@ -4551,8 +4557,8 @@ function drawFrame(now) {
   // folder glows flow downward, one full turn of the colors every 4 s
   if (!reduceMotion.matches) for (const t of glowGradCache.values()) t.offset.y = (now / 4000) % 1;
   // a video played on the wheel stops once the focus moves off it (not on the small settle right after a press)
-  for (const A of [...playing]) if ((A.wheel && (child() !== A.wheel || focusIndex(A.wheel) !== A.wheelI)) || (A.home && contentDir() !== A.home)) { A.playing = false; A.wheel = A.home = null; playing.delete(A); if (A.el) A.el.pause(); redrawMedia(A); }
-  for (const A of [...playing]) {
+  if (playing.size) for (const A of [...playing]) if ((A.wheel && (child() !== A.wheel || focusIndex(A.wheel) !== A.wheelI)) || (A.home && contentDir() !== A.home)) { A.playing = false; A.wheel = A.home = null; playing.delete(A); if (A.el) A.el.pause(); redrawMedia(A); }
+  if (playing.size) for (const A of [...playing]) {
     if (A.el) { if (A.el.duration && isFinite(A.el.duration)) { A.duration = A.el.duration; A.progress = A.el.currentTime / A.el.duration; } continue; }
     A.progress += dt / A.duration;
     if (A.progress >= 1) { if (A.loop) A.progress = 0; else { A.progress = 1; A.playing = false; playing.delete(A); redrawMedia(A); } }
@@ -4569,11 +4575,12 @@ function drawFrame(now) {
   renderClip();
   if (hovered && !tipShownFor && !drag && !svOpen && cardMenu.hidden && now - hoverAt > T.HOLD && hovered.alive) showTip(hovered);
   // the cards' shadows are drawn again while anything can be moving and for a moment after (the pop, the bob and the
-  // tilt settle in that time), and every eighth frame anyway; a still scene with a gif or a video playing keeps the last map
+  // tilt settle in that time), or the cards were laid out again (a change from the vault, with no hand on anything). a scene at
+  // rest keeps its map: the tube only receives, and its spin leaves it as it is. (now and then anyway, in case of something unseen)
   if (now - lastInputAt < 1500 || drag || flip.t !== flip.target || (stack && stack.fly) || wheels.some(w => w.target !== null || w.coast || w.alpha < 1 || w.dying || Math.abs(w.x - w.xTarget) > 1e-3)) shadowUntil = now + 1200;
   // (a view move on its own redraws them every fourth frame: only the light and the camera are moving, and softly)
   const onlyView = viewMoving() && !(drag && drag.axis !== 'flip') && !(stack && stack.fly) && !wheels.some(w => w.target !== null || w.coast || w.alpha < 1 || w.dying);
-  renderer.shadowMap.needsUpdate = onlyView ? (frameNo & 3) === 0 : now < shadowUntil || (frameNo & 7) === 0;
+  renderer.shadowMap.needsUpdate = onlyView ? (frameNo & 3) === 0 : now < shadowUntil || (frameNo & 255) === 0;
   // with the playground open the scene behind its blur is still: it is drawn once (and again after a theme change or a
   // resize), then left as it is until the board closes
   const still = svOpen && sceneDrawnForBoard;

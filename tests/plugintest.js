@@ -25,7 +25,7 @@ function world(mobile, desktop, fresh) {
     async saveData(d) { w.dataWrites++; w.put(DIR + '/data.json', JSON.stringify(d)); }
     unload() { this.onunload(); for (const i of this.mine) w.intervals.delete(i); }
   }
-  class ItemView { constructor() { } } class Modal { } class Component { } class TFile { } class TFolder { } class PluginSettingTab { } class Setting { }
+  class ItemView { constructor() { } load() { throw new Error('a view does not override load: it is Obsidian\'s'); } } class Modal { } class Component { } class TFile { } class TFolder { } class PluginSettingTab { } class Setting { }
   class Notice { constructor(t) { w.notices.push(t); } }
   const Platform = { isMobile: !!mobile, isDesktopApp: !!desktop, isTablet: false, isPhone: !!mobile };
   w.Platform = Platform;

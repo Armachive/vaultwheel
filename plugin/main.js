@@ -281,9 +281,11 @@ class WheelView extends ItemView {
     listen(window);
     if (this.containerEl.win && this.containerEl.win !== window) listen(this.containerEl.win);
     this.registerEvent(this.app.workspace.on('window-open', (ww, w) => listen(w)));
-    await this.load();
+    await this.loadPage();
   }
-  async load() {
+  // (not called load: that is Component's, and over it Obsidian ran this once more on its own, and the view never counted as
+  // loaded, so what it registers was never let go when it closed)
+  async loadPage() {
     const root = this.contentEl; root.empty(); root.addClass('vaultwheel-host'); this.failEl = null;
     this.frame = null; this.busy = false; this.pendingReload = false; this.pageErr = '';
     // two loads that overlap (an update arriving as the view opens) would each add a page; only the latest one does
@@ -324,7 +326,7 @@ class WheelView extends ItemView {
       const box = this.contentEl.createDiv({ cls: 'vaultwheel-fail' }), gl = /webgl/i.test(this.pageErr);
       box.createEl('p', { text: gl ? 'VaultWheel could not start WebGL here, so the wheel cannot draw. Hardware acceleration may be off (Settings, Appearance).' : 'VaultWheel\'s page did not start.' });
       if (this.pageErr) box.createEl('p', { text: this.pageErr, cls: 'vaultwheel-fail-why' });
-      box.createEl('button', { text: 'Try again' }).onclick = () => { box.remove(); this.failEl = null; this.plugin.releaseMedia(); this.load(); };
+      box.createEl('button', { text: 'Try again' }).onclick = () => { box.remove(); this.failEl = null; this.plugin.releaseMedia(); this.loadPage(); };
       this.failEl = box;
     }
     if (tries < 12) window.setTimeout(() => this.lookAtPage(seq, tries + 1), 5000);
@@ -333,7 +335,7 @@ class WheelView extends ItemView {
   reload() {
     if (this.busy) { this.pendingReload = true; return; }
     this.plugin.releaseMedia();
-    this.load().then(() => new Notice('VaultWheel updated'));
+    this.loadPage().then(() => new Notice('VaultWheel updated'));
   }
   // the pointer moved over the wheel: it takes the keyboard, so the arrows and the wheel's shortcuts work without a click
   // (what it has no use for, ctrl + P and the like, it hands on to Obsidian). not while you are typing in a field (a key in

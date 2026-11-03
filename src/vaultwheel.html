@@ -785,6 +785,7 @@ renderer.outputColorSpace = THREE.SRGBColorSpace;
 // tube behind the cards, its costliest pixels, before covering it. the depth test gives the same picture in any order
 renderer.setOpaqueSort((a, b) => a.groupOrder - b.groupOrder || a.renderOrder - b.renderOrder || (a.material.vwPass || 0) - (b.material.vwPass || 0) || a.z - b.z || a.id - b.id);
 const scene = new THREE.Scene();
+scene.matrixAutoUpdate = false;      // (it never moves, and a root that says it moved has every matrix under it worked out again: see freezeEntry)
 const camera = new THREE.PerspectiveCamera(T.FOV, 1, 0.05, 400);
 let FOCUS_ANGLE = 0.4;
 
@@ -2119,6 +2120,7 @@ function restyleEntry(e) {
 // in focus at once, the rest through the queue, stretched for a frame or two until then)
 function resizeEntry(e, W, H) {
   const geo = cardGeo(W, H), k = clamp(Math.min(H / T.TEXT_H, 2 * W / T.CARD_W), 0.2, 1), us = UNDER_K * Math.min(1, Math.min(W, H) / T.TEXT_H), sharp = wantsSharp(e);
+  freezeEntry(e, false); e.still = false;
   e.card.geometry = e.under.geometry = geo;
   e.under.position.set(T.UNDER.dx * us, T.UNDER.dy * us, -T.UNDER.dz * us);
   e.glow.scale.set(W * (1 + 0.8 * k), glowH(H, k), 1); e.glow.position.set(T.UNDER.dx * us, T.UNDER.dy * us, -T.UNDER.dz * us - 0.01);
@@ -2802,12 +2804,21 @@ function setOpacity(e, op) {
   e.group.visible = op > 0.004;
   e.op = op;
 }
+// a card at rest has its matrices left alone: a collage's hundreds would otherwise each be worked out again every frame, six to
+// a card, for nothing. whatever moves one thaws it first
+const entryParts = e => [e.group, e.tilt, e.glow, e.under, e.card, e.ring];
+function freezeEntry(e, on) {
+  if (!!e.frozen === on) return;
+  e.frozen = on;
+  for (const o of entryParts(e)) { if (on) o.updateMatrix(); o.matrixAutoUpdate = !on; }
+}
 function placeEntry(e, a, focused, selected, dt, now, level, op = 1) {
   setOpacity(e, op);
   // a card at rest that nothing moves or lights (most of a big collage) sits where it sat last frame and looks the same,
   // so only the drawing upkeep further down runs for it
   const still = e.still && !focused && !selected && hovered !== e && a === e.restA && e.ox === e.restOx && level === e.restLevel && op === e.restOp && e.us === e.restUs && theme === e.restTheme;
   if (!still) {
+    freezeEntry(e, false);
     if (focused && !e.focus) { e.bobV += 2.4; if (level === 0 && !e.isStackTop) sfx.pop(); }
     e.focus = focused; e.sel = selected;
     e.pop = damp(e.pop, focused ? 1 : 0, SPD.pop, dt);
@@ -2847,6 +2858,7 @@ function placeEntry(e, a, focused, selected, dt, now, level, op = 1) {
     e.ring.material.opacity = e.ringAmt * op;
     // a ring at nothing is not drawn: an invisible blended plane still costs a draw call and its fill on every card
     e.ring.visible = e.ring.material.opacity > 0.002;
+    if (e.still) freezeEntry(e, true);
   }
   // the focused card's long name scrolls (redrawn at about 30 Hz, which reads the same and halves the texture uploads)
   if ((focused || e.isStackTop) && e.scrolling && level === 0 && !reduceMotion.matches && now - (e.lastMarquee || 0) > 32) { e.lastMarquee = now; e.phase = (now / 9000) % 1; drawFace(e); }
@@ -4486,6 +4498,8 @@ function drawFrame(now) {
   for (const w of wheels) {
     if (!w.dying) w.xTarget = colX(w.level);
     w.x = hiddenColumn(w) ? w.xTarget : damp(w.x, w.xTarget, 16, dt); w.group.position.x = w.x;
+    // (a column that has stopped sliding says nothing, so the cards at rest under it are left alone too)
+    w.group.matrixAutoUpdate = w.x !== w.xDone; w.xDone = w.x;
     // spin: the pointer holds it while dragging; a flick coasts on with friction; then a critically damped spring onto
     // the resting slot. a coast hands over to the spring once it is slow, ahead in the direction it was going, at the
     // same speed, so it never jerks

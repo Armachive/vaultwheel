@@ -2,6 +2,9 @@
 # build.sh <mode> <out> [light]   mode: snapshot (the artifact, three from the CDN, the vault scan baked in)
 #                               live (the site, three from the CDN, no scan: the server supplies it)
 #                               bridge (the Obsidian plugin, three inlined as a data url so it works offline and on mobile)
+# live and bridge with nothing after <out> are the owner's own builds: the crying gifs and the editors' libraries (three quarters
+# of the page, and few visits want them) go in vaultwheel-gifs.json and vaultwheel-vendor.json beside <out>, and the page asks for
+# each the first time it wants it. every other build has them in the page
 # light keeps one crying gif instead of six and inlines three, so a test build stays small enough for the test container's
 # memory and needs no network; public carries no gifs (they are personal), for a release build
 # the scan, its thumbnails and the gifs are personal and not in the repo (vault_full.json, am_thumbs.json, gifs.json at its
@@ -24,12 +27,19 @@ if ($mode eq "snapshot") {
   my ($v,$t)=!$made && -f "$S/vault_full.json" && -f "$S/am_thumbs.json" ? ("$S/vault_full.json","$S/am_thumbs.json") : ("$S/tests/fixture/vault.json","$S/tests/fixture/thumbs.json");
   $data=slurp($v); $th=slurp($t); chomp $data; chomp $th;
 }
-my $three="https://cdn.jsdelivr.net/npm/three\@0.160.0/build/three.module.js";
-if ($mode eq "bridge" || $light) { require MIME::Base64; $three="data:text/javascript;base64,".MIME::Base64::encode_base64(slurp("$S/vendor/three-0.160.0.module.js"),""); }
+my $three="https://cdn.jsdelivr.net/npm/three\@0.160.0/build/three.module.min.js";
+if ($mode eq "bridge" || $light) { require MIME::Base64; $three="data:text/javascript;base64,".MIME::Base64::encode_base64(slurp("$S/vendor/three-0.160.0.module.min.js"),""); }
 for ($js,$data,$th) { s{</}{<\\/}g; }
 # the playground lives in its own files and is inlined where the page leaves room for it
 if ($html =~ /__PLAYGROUND_JS__/) { my $pj=slurp("$S/src/playground.js"); my $pc=slurp("$S/src/playground.css"); $pj =~ s{</}{<\\/}g; $html =~ s/  __PLAYGROUND_CSS__\n/$pc/ or die "no playground css"; $html =~ s/__PLAYGROUND_JS__\n/$pj/ or die "no playground js"; }
-my $ven = -f $ENV{VW_VENDOR} ? slurp($ENV{VW_VENDOR}) : ""; $html =~ s/__VENDOR_JS__/$ven/; $html =~ s/__CARDS_JS__/$js/ or die "no js"; $html =~ s/__DATA__/$data/ or die "no data"; $html =~ s/__THUMBS__/$th/ or die "no thumbs"; $html =~ s/__GIFS__/$gifs/ or die "no gifs";
+my $ven = -f $ENV{VW_VENDOR} ? slurp($ENV{VW_VENDOR}) : "";
+if (!$light && $mode ne "snapshot") {
+  my $dir = $out =~ s{[^/]*\z}{}r;
+  $ven =~ /^window\.__VENDOR=(.*);\n\z/s or die "no vendor pack";
+  for (["gifs",$gifs],["vendor",$1]) { open(my $o,">:raw","${dir}vaultwheel-$_->[0].json") or die; print $o $_->[1]; close $o; }
+  $ven = "window.__VW_PACKS=1;"; $gifs = "";
+}
+$html =~ s/__VENDOR_JS__/$ven/; $html =~ s/__CARDS_JS__/$js/ or die "no js"; $html =~ s/__DATA__/$data/ or die "no data"; $html =~ s/__THUMBS__/$th/ or die "no thumbs"; $html =~ s/__GIFS__/$gifs/ or die "no gifs";
 $html =~ s/__MODE__/$mode/ or die "no mode"; $html =~ s/__THREE_SRC__/$three/ or die "no three";
 open(my $o,">:raw",$out) or die; print $o $html; close $o; print "built $mode -> $out ", -s $out, " bytes\n";' "$MODE" "$OUT" "$LIGHT"
 # (the plugin sends nothing out: its font goes in the page. the site and the preview take it from Google)

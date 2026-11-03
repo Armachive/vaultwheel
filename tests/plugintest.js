@@ -381,6 +381,11 @@ function world(mobile, desktop, fresh) {
     await p.saveSetting('hover', true);
     let got = await say({ t: 'prefs' });
     T('the page does not see the plugin\'s settings', !('settings' in got.prefs), JSON.stringify(got));
+    // the files beside the page (the owner's own build): only those two names, nothing else in the folder
+    r.w.put(DIR + '/vaultwheel-gifs.json', '[1]');
+    got = await say({ t: 'pack', name: 'gifs' }); T('a file beside the page is read for it', got.ok && got.text === '[1]', JSON.stringify(got));
+    got = await say({ t: 'pack', name: 'vendor' }); T('one that is not there says so', got.ok === false && !!got.err, JSON.stringify(got));
+    got = await say({ t: 'pack', name: '../data' }); T('and no other name is taken', got.ok === false, JSON.stringify(got));
     await say({ t: 'savePrefs', prefs: { dirs: { a: { u: 1 } } } });
     let disk = JSON.parse(r.w.files.get(DIR + '/data.json'));
     T('and a save of the page\'s keeps them', disk.settings.hover === true && disk.dirs.a.u === 1, JSON.stringify(disk));

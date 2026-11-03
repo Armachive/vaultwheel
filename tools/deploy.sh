@@ -32,6 +32,14 @@ cp -p "$APP/index.html" "$APP/server.py" "$B/"
 cp -p "$PLUG/main.js" "$PLUG/manifest.json" "$PLUG/styles.css" "$PLUG/vaultwheel.html" "$B/plugin/"
 echo "backed up to $B"
 
+# the files beside the page go first, so a new page never asks for one that is not there yet, and only when they changed: they
+# are big and rarely do
+for f in vaultwheel-gifs.json vaultwheel-vendor.json; do
+  if ! cmp -s "$S/build/live/$f" "$APP/$f"; then
+    [ ! -f "$APP/$f" ] || cp -p "$APP/$f" "$B/"
+    cp "$S/build/live/$f" "$APP/$f" && chown "$APP_OWNER" "$APP/$f" && chmod 644 "$APP/$f"
+  fi
+done
 cp "$S/build/live/index.html" "$APP/index.html" && chown "$APP_OWNER" "$APP/index.html" && chmod 644 "$APP/index.html"
 if ! cmp -s "$S/site/server.py" "$APP/server.py"; then
   cp "$S/site/server.py" "$APP/server.py" && chown "$APP_OWNER" "$APP/server.py" && chmod 644 "$APP/server.py"
@@ -40,6 +48,12 @@ fi
 docker exec "$SITE_CONTAINER" python -c "import urllib.request; print('site health', urllib.request.urlopen('http://127.0.0.1:8110/healthz',timeout=30).status)"
 
 for f in main.js manifest.json styles.css; do cp "$S/plugin/$f" "$PLUG/$f" && chown "$PLUG_OWNER" "$PLUG/$f" && chmod 770 "$PLUG/$f"; done
+for f in vaultwheel-gifs.json vaultwheel-vendor.json; do
+  if ! cmp -s "$S/build/plugin/$f" "$PLUG/$f"; then
+    [ ! -f "$PLUG/$f" ] || cp -p "$PLUG/$f" "$B/plugin/"
+    cp "$S/build/plugin/$f" "$PLUG/$f" && chown "$PLUG_OWNER" "$PLUG/$f" && chmod 770 "$PLUG/$f"
+  fi
+done
 cp "$S/build/plugin/vaultwheel.html" "$PLUG/vaultwheel.html" && chown "$PLUG_OWNER" "$PLUG/vaultwheel.html" && chmod 770 "$PLUG/vaultwheel.html"
 echo "plugin updated"
 

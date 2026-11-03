@@ -1067,6 +1067,13 @@ module.exports = class VaultWheel extends Plugin {
         if (!m.prefs || typeof m.prefs !== 'object' || Array.isArray(m.prefs)) return reply({ ok: false, err: 'prefs must be an object' });
         await this.writeData(m.prefs); return reply({ ok: true });
       }
+      // #if dev
+      // what the owner's own build keeps in files beside the page (see tools/build.sh). a store build has it all in the page
+      if (m.t === 'pack') {
+        if (m.name !== 'gifs' && m.name !== 'vendor') return reply({ ok: false, err: 'no such file' });
+        return reply({ ok: true, text: await this.app.vault.adapter.read(normalizePath(this.manifest.dir + '/vaultwheel-' + m.name + '.json')) });
+      }
+      // #endif
       // an excalidraw drawing as svg markup, made by the excalidraw plugin itself, for the playground to show it (as a
       // picture: the page should put it in an <img> from a blob, never into its own markup)
       if (m.t === 'excalidraw') {

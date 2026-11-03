@@ -267,7 +267,7 @@ import * as THREE from '__THREE_SRC__';
 const MODE = '__MODE__';           // snapshot (the artifact), live (the vault-tree server on the site), bridge (the Obsidian plugin)
 const DATA = __DATA__;
 const THUMBS = __THUMBS__;            // "folder/file" -> { w, h, d } (compressed jpeg data)
-let CRY = null;                    // the empty folder gifs (none in a store build): { w, h, d }, read when first wanted
+let CRY = null;                    // the empty folder gifs (none in a store build): { w, h, d }, read when first wanted (see cryGifs)
 const C = window.VWCards;
 
 /* =====================================================================
@@ -570,6 +570,8 @@ function liveProvider(base, key) {
   };
   P.prefetch = refs => prefetchAll(P, refs);
   P.mediaUrl = item => P.fileUrl(item);
+  // (the owner's own build keeps what few visits want in files beside the page, see tools/build.sh)
+  P.pack = name => fetch(q('/pack/' + name)).then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.text(); });
   // moves are real here: the server renames inside the vault (never copies, never overwrites) and keeps a journal.
   // the whole page sits behind a login of its own, so a move needs nothing more
   P.move = (ref, to) => {
@@ -652,6 +654,8 @@ function bridgeProvider() {
   P.forget = item => { imgCache.delete(item); hiCache.delete(item); artCache.delete(item); };
   // pictures and video frames near the focus are asked for before their cards are made (the small ones only)
   P.prefetch = refs => prefetchAll(P, refs);
+  // (the owner's own build keeps what few visits want in files beside the page, see tools/build.sh)
+  P.pack = name => ask('pack', { name }).then(m => { if (!m.ok) throw new Error(m.err === 'unknown request' ? 'restart Obsidian once to load the new plugin' : m.err || 'no answer'); return m.text; });
   P.mediaUrl = item => ask('media', { p: pathOf(item) }).then(m => m.url || null);
   P.prefs = () => ask('prefs').then(m => { if (!m.prefs) throw new Error('no prefs'); return m.prefs; });
   P.savePrefs = p => ask('savePrefs', { prefs: p });
@@ -2899,6 +2903,14 @@ function gifRelease(img) { if (!gifsLive.has(img)) return; gifsLive.delete(img);
 const cryEl = $('#cry'), emptyNote = $('#emptyNote');
 let cryFor = null, cryLast = -1;
 const isEmptyDir = d => !d.dirs.length && !d.files.length && !d.fc;
+// the gifs, from the page or from their file, asked for once. null until they are here; a file that does not come leaves none
+let cryAsked = false;
+function cryGifs() {
+  if (CRY) return CRY;
+  if (!window.__VW_PACKS) return CRY = JSON.parse(document.getElementById('cryData').textContent);
+  if (!cryAsked) { cryAsked = true; prov.pack('gifs').then(t => { CRY = JSON.parse(t); }).catch(e => { console.warn('VaultWheel: the crying gifs did not come', e); CRY = []; }); }
+  return null;
+}
 function updateCry() {
   const c = child();
   // (shown while carrying too: the stack sits on the folder's own card, not in the empty space)
@@ -2908,7 +2920,8 @@ function updateCry() {
   if (want === cryFor) return;
   cryFor = want; emptyNote.hidden = true;
   if (!want) { cryEl.classList.remove('on'); return; }
-  if (!CRY) CRY = JSON.parse(document.getElementById('cryData').textContent);
+  // (still on their way: looked at again next frame)
+  if (!cryGifs()) { cryFor = null; return; }
   // a public build carries no crying gifs: it says so in words
   if (!CRY.length) { cryEl.classList.remove('on'); emptyNote.hidden = !isEmptyDir(want); placeCry(); return; }
   let i = Math.floor(Math.random() * CRY.length); if (i === cryLast) i = (i + 1) % CRY.length; cryLast = i;

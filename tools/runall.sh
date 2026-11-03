@@ -7,8 +7,8 @@
 # - a suite that prints no results at all reads as a failure
 # - tests/<name>.budget names a suite's time budget, for one that waits on real work off the main thread
 # - the bridge and live suites run on a build of that mode, on the real clock (RTEST_REAL); plugintest runs in node
-BRIDGE=" keyfwdtest loadtest ctxbridgetest thumbtest oldplugintest plusbridgetest "
-LIVE=" ctxlivetest livetest thumblivetest "
+BRIDGE=" keyfwdtest loadtest ctxbridgetest thumbtest oldplugintest plusbridgetest packtest "
+LIVE=" ctxlivetest livetest thumblivetest packlivetest "
 NODE=" plugintest "
 S=$(cd "$(dirname "$0")/.." && pwd)
 

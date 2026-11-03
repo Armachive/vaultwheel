@@ -18,14 +18,6 @@ cmp -s "$S/manifest.json" "$S/plugin/manifest.json" || { echo "manifest.json and
 [ -f "$S/LICENSE" ] || { echo "no LICENSE"; exit 1; }
 O=$S/build/release; mkdir -p "$S/build"; T=$(mktemp -d "$S/build/release-XXXXXX"); trap 'rm -rf "$T"' EXIT
 sh "$S/tools/build.sh" bridge "$T/page.html" public >/dev/null
-# three's own minified build of the same version is half the size
-perl -0777 -e '
-use MIME::Base64;
-my ($page, $min) = @ARGV;
-sub slurp { open(my $f, "<:raw", $_[0]) or die "$_[0]: $!"; local $/; my $d = <$f>; close $f; return $d }
-my $h = slurp($page), my $m = encode_base64(slurp($min), "");
-$h =~ s{from \x27data:text/javascript;base64,[A-Za-z0-9+/=]+\x27}{from \x27data:text/javascript;base64,$m\x27} or die "no inlined three in the page\n";
-open(my $o, ">:raw", $page) or die; print $o $h; close $o;' "$T/page.html" "$S/vendor/three-0.160.0.module.min.js"
 # what must never ship, looked for in the page and in the plugin. a word here is the list of what the build is checked against,
 # so it stays out of the files themselves
 perl -0777 -e '

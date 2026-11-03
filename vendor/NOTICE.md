@@ -6,7 +6,6 @@ phones. They are reskinned with CSS only.
 
 | file | package | version | licence |
 |---|---|---|---|
-| three-0.160.0.module.js | three | 0.160.0 | MIT (LICENSE.three); the 3D scene, inlined in the plugin's build and in test builds |
 | cropper-1.6.2.min.js, cropper-1.6.2.min.css | cropperjs | 1.6.2 | MIT (LICENSE.cropperjs) |
 | clip/clip.html | Clip (maarudth/clip, commit in clip/COMMIT.txt) | | MIT (clip/LICENSE.clip) |
 | clip/mp4-muxer-5.0.1.mjs | mp4-muxer | 5.0.1 | MIT (clip/LICENSE.mp4-muxer); the module Clip imports for its mp4 export |
@@ -19,7 +18,7 @@ Each library is inlined as text and only run the first time its editor opens, so
 
 | file | what | licence |
 |---|---|---|
-| three-0.160.0.module.min.js | three.js r160, from its npm package, what a store build draws with | MIT (LICENSE.three) |
+| three-0.160.0.module.min.js | three.js r160, from its npm package: the 3D scene, inlined in the plugin's builds and in test builds | MIT (LICENSE.three) |
 | fonts/ | Libre Baskerville, the files Google Fonts serves, inlined by tools/font-inline.pl | SIL Open Font License 1.1 (fonts/OFL.txt) |
 
 ## What AudioMass bundles

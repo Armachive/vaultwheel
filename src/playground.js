@@ -1163,6 +1163,13 @@ sv.insertAdjacentHTML('beforeend', '<div class="pged" role="dialog" aria-label="
   + '<button type="button" class="xclose" data-e="close" aria-label="Close the editor" title="Close (Esc)">✕</button></div>');
 const pgEd = sv.querySelector('.pged'), edWork = pgEd.querySelector('.work'), edTools = pgEd.querySelector('.tools'), edBusy = pgEd.querySelector('.busy');
 let ed = null;      // the open editor: { kind, ref, box, url, save(), close() }
+// the libraries are on window.__VENDOR, from the page or from their file the first time an editor opens. a file that did not
+// come is asked for again the next time
+let vendorAsked = null;
+function vendorReady() {
+  if (window.__VENDOR) return Promise.resolve();
+  return vendorAsked || (vendorAsked = prov.pack('vendor').then(t => { window.__VENDOR = JSON.parse(t); }).catch(e => { vendorAsked = null; throw e; }));
+}
 // a library's text comes out of the base64 the build put on window.__VENDOR and runs once, as a script or a style
 const vendorRan = new Set();
 function vendorText(key) {
@@ -1257,7 +1264,7 @@ function canSave(ok, why) { saveBtn.disabled = !ok; saveBtn.title = ok ? 'Save o
 function openEditor(box) {
   const ref = box.__ref, it = itemOf(ref), kind = it.kind === 'audio' ? 'audio' : it.media === 'video' ? 'video' : it.media === 'image' ? 'image' : null;
   if (!kind || ed) return;
-  if (!window.__VENDOR) { toast('The editors are not in this build.'); sfx.nope(); return; }
+  if (!window.__VENDOR && !window.__VW_PACKS) { toast('The editors are not in this build.'); sfx.nope(); return; }
   closeRename(); closeBoards(); hideTip();     // a card's tooltip must not sit over the panel
   pgEd.querySelector('.nm').textContent = ref.name; edNote(''); edTools.textContent = '';
   for (const el of [...edWork.children]) if (el !== edBusy) el.remove();
@@ -1274,7 +1281,7 @@ function openEditor(box) {
   // that has not been restarted since the editors arrived
   const read = window.__VW_TEST__ && window.__VW_TEST_READ__ ? window.__VW_TEST_READ__(ref) : readBytes(ref);
   const timeout = new Promise(res => setTimeout(() => res('timeout'), 20000));
-  Promise.race([read, timeout]).then(buf => {
+  Promise.race([Promise.all([read, vendorReady()]).then(r => r[0]), timeout]).then(buf => {
     if (ed === null || ed.ref !== ref) return;
     if (buf === 'timeout') return edFail('No answer from Obsidian. Restart Obsidian once to use the editors.');
     if (!buf) return edFail(MODE === 'snapshot' ? 'The editors work inside Obsidian and on the site.' : 'Could not read the file.');

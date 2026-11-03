@@ -610,6 +610,14 @@ class Handler(BaseHTTPRequestHandler):
             with open(os.path.join(HERE, "index.html"), "rb") as fh:
                 return self._send(200, "text/html; charset=utf-8", fh.read())
 
+        if path in ("/pack/gifs", "/pack/vendor"):
+            # what the page keeps in files beside it, and asks for the first time it wants it (see tools/build.sh)
+            try:
+                with open(os.path.join(HERE, "vaultwheel-" + path[6:] + ".json"), "rb") as fh:
+                    return self._send(200, "application/json; charset=utf-8", fh.read())
+            except OSError:
+                return self._deny(404, "not found")
+
         if path == "/api/themes":
             # the Obsidian themes as the plugin last resolved them (the one file read outside the listing)
             try:

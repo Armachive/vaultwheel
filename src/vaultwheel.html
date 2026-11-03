@@ -339,7 +339,8 @@ function loadImage(cache, key, src, done) {
     if (typeof src === 'string') e.img.src = src; else src.then(u => { if (u) e.img.src = u; else { e.dead = true; e.waiting = []; } }, fail);
   }
   if (e.ready) return e.img;
-  if (done && !e.dead) e.waiting.push(done);
+  // (a card drawn again while it waits, a long name scrolling say, asks with the same callback: it hears once when the picture comes)
+  if (done && !e.dead && !e.waiting.includes(done)) e.waiting.push(done);
   return null;
 }
 // small pictures, video frames and cover art made in an earlier session are kept in this browser's own storage
@@ -370,9 +371,10 @@ function freeKept(e) { const u = e.img.src; if (keptLinks.delete(u)) URL.revokeO
 function evictKept(e) { e.gone = true; freeKept(e); }
 // one that will not decode is taken out of storage, so the try after this makes it afresh
 function badKept(e) {
-  const k = keptLinks.get(e.img.src); if (!k) return;
+  if (!keptLinks.has(e.img.src)) return;
+  const k = keptLinks.get(e.img.src);
   freeKept(e);
-  if (thumbDb) thumbDb.then(db => { if (db) db.transaction('t', 'readwrite').objectStore('t').delete(k); }).catch(() => { });
+  if (k && thumbDb) thumbDb.then(db => { if (db) db.transaction('t', 'readwrite').objectStore('t').delete(k); }).catch(() => { });
 }
 // the bridge's sharp ask waits on this: the small one was found or asked for by then, so the plugin still hears the small
 // one first and makes it first
@@ -469,7 +471,7 @@ function posterMaker(urlOf) {
     let e = posters.get(item);
     if (!e) { e = { img: null, waiting: [] }; posters.set(item, e); queue.push([item, e]); pump(); }
     if (e.img) return e.img;
-    if (done && !e.dead) e.waiting.push(done);
+    if (done && !e.dead && !e.waiting.includes(done)) e.waiting.push(done);
     return null;
   };
 }
@@ -533,7 +535,7 @@ function liveProvider(base, key) {
   // what a card needs: 360 px on the long side, or 1280 px for a big card. a folder of hundreds of pictures then holds
   // small copies, not full files. three at a time. gifs and svgs stay as they are (a gif has to move, an svg is already
   // small), a png keeps its see-through parts, and the playground still gets the full file
-  const sharpCache = lruMap(120), shrinkQ = []; let shrinking = 0;
+  const sharpCache = lruMap(120, evictKept), shrinkQ = []; let shrinking = 0;
   // a big card wants both sizes: the file comes down once and is held for a few seconds so both copies are cut from it
   const fullBlobs = new Map();
   const blobOf = item => {
@@ -551,7 +553,9 @@ function liveProvider(base, key) {
         c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height); bmp.close();
         // (anything that is not a jpeg keeps its see-through parts: png, webp, avif)
         const jpeg = /\.jpe?g$/i.test(item.name), out = await new Promise(r => c.toBlob(r, jpeg ? 'image/jpeg' : 'image/png', 0.82));
-        res(out ? URL.createObjectURL(out) : P.fileUrl(item));
+        // (a link of this page's own, which goes when its picture leaves its cache, like one out of storage. '': no key in storage)
+        if (!out) { res(P.fileUrl(item)); return; }
+        const u = URL.createObjectURL(out); keptLinks.set(u, ''); res(u);
       } catch (e) { res(P.fileUrl(item)); }     // a picture this browser cannot decode is shown as the file itself
     });
     pumpShrink();
@@ -1893,7 +1897,7 @@ function faceSpec(e) {
   if (it.ref.draft) spec.iconKind = it.ref.liveKind;
   if (level >= 3) { spec.name = ''; spec.kind = it.media === 'image' || it.media === 'video' ? it.kind : 'other'; spec.placeholder = true; spec.blank = true; }
   if (it.media === 'image' || it.media === 'video' || it.kind === 'audio') {
-    const img = level === 0 ? prov.thumbImage(it.ref, () => { if (e.alive) refit(e); }, wantsSharp(e)) : null;
+    const img = level === 0 ? prov.thumbImage(it.ref, e.onThumb || (e.onThumb = () => { if (e.alive) refit(e); }), wantsSharp(e)) : null;
     // (a picture that would taint the card, one from another origin, shows as the placeholder instead of blanking it)
     const ok = img && drawable(img); spec.thumb = ok ? img : null; spec.placeholder = !ok;
     // a playing gif shows the frame it is on (see gifPlayer)

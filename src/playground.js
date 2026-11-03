@@ -45,7 +45,7 @@ function drawSvCard(card) {
   if (cw2 * ch > 16e6) { const k = Math.sqrt(16e6 / (cw2 * ch)); cw2 = Math.max(16, Math.floor(cw2 * k)); ch = Math.max(16, Math.floor(ch * k)); }
   if (card.c.width !== cw2 || card.c.height !== ch) { card.c.width = cw2; card.c.height = ch; }
   const g2 = card.c.getContext('2d'); if (!g2) return;
-  let thumb = it.media || it.kind === 'audio' ? prov.thumbImage(it.ref, () => { if (svOpen && svCards.includes(card)) drawSvCard(card); }) : null;
+  let thumb = it.media || it.kind === 'audio' ? prov.thumbImage(it.ref, card.onThumb || (card.onThumb = () => { if (svOpen && svCards.includes(card)) drawSvCard(card); })) : null;
   // (a frame from another origin would taint the card's canvas and blank it, so only a drawable one is used)
   if (it.video && A.el && A.playing && A.el.readyState >= 2 && drawable(A.el)) thumb = A.el;
   const res = C.drawCard(g2, card.c.width, card.c.height, { theme, name: it.name, isDir: it.isDir, kind: it.kind, thumb, placeholder: !thumb, audio: it.audio, video: it.video, tile: !!card.tile, wrap: true });

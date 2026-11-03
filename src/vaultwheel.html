@@ -2790,7 +2790,7 @@ function placeWheel(w, dt, now) {
     if (grad) { const g = clamp(0.5 + (FOCUS_ANGLE - ang[e.index]) / 3.9, 0, 1), f = clamp((w.alpha - 0.55 * g) / 0.45, 0, 1); op = f * f * (3 - 2 * f); }
     // (a cut card stays dimmed until it is pasted or the cut is let go)
     placeEntry(e, ang[e.index], e.index === fi, false, dt, now, w.level, op * fv * (clip && clip.cut && clip.set.has(e.it.ref) ? CUT_DIM : 1));
-    if (!w.stops) { const h = e.h / 2; e.group.visible = e.op > 0.004 && Math.abs(ang[e.index] - camA) < rimA + Math.acos(T.R / (w.level ? R + h : Math.hypot(R, h))) + Math.atan2(h, R) + 0.2; }
+    const h = e.h / 2; e.group.visible = e.op > 0.004 && (!!w.stops || Math.abs(ang[e.index] - camA) < rimA + Math.acos(T.R / (w.level ? R + h : Math.hypot(R, h))) + Math.atan2(h, R) + 0.2);
   }
 }
 // opacity for a whole card; materials only go transparent while they need to
@@ -4694,7 +4694,7 @@ window.VW = {
   busy: () => { const r = []; if (drag) r.push('drag'); if (flip.hold) r.push('hold'); if (flip.t !== flip.target) r.push('flip ' + flip.t + ' ' + flip.target); if (stack && stack.fly) r.push('fly'); if (drawQueue.size) r.push('draws ' + drawQueue.size);
     for (const w of wheels) { if (w.target !== null) r.push(w.level + ' target ' + w.target + ' s ' + w.s); if (w.coast) r.push(w.level + ' coast'); if (w.alpha < 1) r.push(w.level + ' alpha'); if (w.dying) r.push(w.level + ' dying'); if (Math.abs(w.x - w.xTarget) > 1e-3) r.push(w.level + ' x ' + w.x + ' ' + w.xTarget); }
     return r; },
-  faces: level => { const w = wheelAt(level || 0); return w ? [...w.entries.values()].map(e => ({ name: e.it.name, px: e.thumbPx || 0, tile: e.tile })) : []; },
+  faces: level => { const w = wheelAt(level || 0); return w ? [...w.entries.values()].map(e => ({ name: e.it.name, px: e.thumbPx || 0, tile: e.tile, shown: e.group.visible, op: e.op })) : []; },
   vaultChange: m => { vaultChange(m); },
   nameStart: () => { const r = T.R + T.LIFT + T.POP_OUT, v = new THREE.Vector3(-T.CARD_W / 2 + 0.04, Math.sin(FOCUS_ANGLE) * r, Math.cos(FOCUS_ANGLE) * r).project(camera); return (v.x + 1) / 2; },
   dirSettings: () => { const d = contentDir(); return d ? dirSettings(d) : null; }, setScale,

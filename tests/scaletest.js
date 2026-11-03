@@ -110,6 +110,14 @@
   let saved=null; try{ saved=JSON.parse(localStorage.getItem('vw.prefs')); }catch(e){}
   T('nothing is saved past the session', !saved || !Object.keys(saved.dirs||{}).length, JSON.stringify(saved));
   T('the bar has no scale meter or saved settings, and keeps the saved boards button', !$('#dScale') && !$('#dSave') && !!$('#bBoards'), '');
+  // a list's card round behind the tube is not drawn, and shows again when the column turns into a mosaic
+  await setU(0); VW.up(); VW.up(); VW.enter('Riko ochre'); VW.enter('Bane Greenhouse'); VW.snap(); await sl(800);
+  VW.spinTo(Math.floor(VW.state().n/2)); await sl(800); VW.snap(); await sl(500);
+  const lst=VW.faces(0), hid=lst.filter(f=>!f.shown).length;
+  T('a list keeps its far cards made but not drawn', lst.length>0 && hid>0 && hid<lst.length, hid+' of '+lst.length);
+  await setU(0.7); VW.snap(); await sl(900);
+  const tiles=VW.faces(0).filter(f=>f.op>0.01);
+  T('in a mosaic every card is drawn again', tiles.length>0 && tiles.every(f=>f.shown), tiles.filter(f=>!f.shown).length+' of '+tiles.length+' hidden');
   } catch(err) { out.push('FAIL threw :: '+err.message+' '+(err.stack||'').split('\n')[1]); }
   console.log('RESULTS\n'+out.join('\n'));
 })();

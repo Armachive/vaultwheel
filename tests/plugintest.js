@@ -57,7 +57,8 @@ function world(mobile, desktop, fresh) {
     }
   };
   w.app = app; w.obsidian = obsidian; w.current = () => app.plugins.plugins[ID];
-  w.start = () => app.plugins.enablePlugin(ID).then(() => { w.calls.length = 0; });
+  // (the watcher's first look at main.js is not waited for by onload: a tick lets it finish)
+  w.start = () => app.plugins.enablePlugin(ID).then(tick).then(() => { w.calls.length = 0; });
   w.check = async () => { await w.current().checkPage(); await tick(); };
   return w;
 }

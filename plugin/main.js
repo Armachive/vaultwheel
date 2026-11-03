@@ -439,15 +439,17 @@ module.exports = class VaultWheel extends Plugin {
     // #if dev
     // updates (only with the setting on): a new vaultwheel.html or main.js in the plugin folder is noticed within seconds
     // and swapped in. it has to look the same on two checks in a row, so a file still arriving is not read
-    if (this.settings.reload) await this.watchUpdates();
-    this.registerInterval(window.setInterval(() => { if (this.settings.reload) this.checkPage(); }, 4000));
+    // (the read of main.js is not waited for: it can wait, Obsidian's startup can't. a window nobody is looking at doesn't look)
+    if (this.settings.reload) this.watchUpdates();
+    this.registerInterval(window.setInterval(() => { if (this.settings.reload && this.watched && !document.hidden) this.checkPage(); }, 4000));
     // #endif
     // the wheel's Obsidian themes follow the theme files and Style Settings: looked at again when Obsidian's css changes
     // and every half minute (Style Settings' file changes from another device too), worked out again only when one changed
-    this.app.workspace.onLayoutReady(() => window.setTimeout(() => this.refreshThemes(), 3000));
+    this.app.workspace.onLayoutReady(() => window.setTimeout(() => { if (!this.gone) this.refreshThemes(); }, 3000));
     this.app.workspace.onLayoutReady(() => this.keepPlace().catch(e => console.error('VaultWheel: keeping its place', e)));
     this.registerEvent(this.app.workspace.on('css-change', () => this.refreshThemes()));
-    this.registerInterval(window.setInterval(() => this.refreshThemes(), 30000));
+    // (with no wheel open, or nobody looking, there is nothing to keep up to date: one that opens asks, and gets what is known)
+    this.registerInterval(window.setInterval(() => { if (!document.hidden && this.app.workspace.getLeavesOfType(VIEW).length) this.refreshThemes(); }, 30000));
     // changes to the vault from anywhere (a note made in Obsidian, a sync, another plugin) go to any open view, so it
     // shows them without a reload. from when the vault has loaded, so its first indexing is not sent as a flood of creates
     this.app.workspace.onLayoutReady(() => {
@@ -659,6 +661,7 @@ module.exports = class VaultWheel extends Plugin {
     this.pageStamp = await this.stampOf(); this.seenStamp = this.pageStamp;
     this.mainStamp = await this.stampOf('main.js'); this.mainSeen = this.mainStamp;
     try { this.mainSum = sumOf(await this.app.vault.adapter.read(normalizePath(this.manifest.dir + '/main.js'))); } catch (e) { this.mainSum = ''; }
+    this.watched = true;
   }
   async stampOf(name = 'vaultwheel.html') {
     try { const s = await this.app.vault.adapter.stat(normalizePath(this.manifest.dir + '/' + name)); return s ? s.mtime + ':' + s.size : ''; }

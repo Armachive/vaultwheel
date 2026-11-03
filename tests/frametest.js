@@ -42,7 +42,10 @@
       const stage = document.querySelector('#stage'), room = () => { const r = VW.room(); return [r.outer, r.up, r.down, r.picMax].map(x => +x.toFixed(3)).join(); }, base = room(), cam = VW.camera().pos.join();
       stage.style.display = 'none'; dispatchEvent(new Event('resize')); await sl(600);
       T('a stage with no size is known', !VW.health().real && stage.clientWidth === 0);
+      const f1 = VW.health().frames; await sl(500);
+      T('and with no size no frames run at all', VW.health().frames === f1, f1 + ' to ' + VW.health().frames);
       stage.style.display = ''; dispatchEvent(new Event('resize')); await sl(1200);
+      T('they start again with a size', VW.health().frames > f1, f1 + ' to ' + VW.health().frames);
       T('a real size again brings back the same camera and numbers', VW.health().real && room() === base && VW.camera().pos.join() === cam, room() + ' / ' + base + ' , ' + VW.camera().pos.join() + ' / ' + cam);
       T('with the cards', VW.health().shown && VW.wheelsInfo()[0].entries > 0);
       T('and nothing failed on the way', VW.health().failed === n + 1, JSON.stringify(VW.health().errors));

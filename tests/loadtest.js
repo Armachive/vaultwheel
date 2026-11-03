@@ -66,6 +66,12 @@
     let steps = 0; const depth = VW.state().path.length;
     while (steps < 30 && VW.state().path.length === depth) { const b = at(); await key('ArrowLeft'); steps++; if (VW.state().path.length !== depth) break; const c = at(); if (c && b && c.name === b.name) break; }
     T('past the end of the row toward the directory columns it goes up a rung', VW.state().path.length === depth - 1, steps + ' steps, path ' + VW.state().path.join('>'));
+    // off the screen, as a closed drawer is: it keeps its size, and no frames run until it is back or a pointer says so
+    const app = $('#app'), stage = $('#stage'); app.style.transform = 'translateX(-5000px)'; await sl(1000);
+    const f0 = VW.health().frames; await sl(500);
+    T('off the screen no frames run', stage.clientWidth > 0 && VW.health().frames === f0, f0 + ' to ' + VW.health().frames);
+    app.style.transform = ''; await sl(1000);
+    T('back on the screen they do', VW.health().frames > f0, f0 + ' to ' + VW.health().frames);
     } catch (err) { out.push('FAIL threw :: ' + err.message + ' ' + (err.stack || '').split('\n')[1]); }
     console.log('RESULTS\n' + out.join('\n'));
   })();

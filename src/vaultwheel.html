@@ -1018,7 +1018,7 @@ SKY_FS.glass = SKY_HEAD + `void main() {
   float g = (1.0 - 0.6 * dot(uv - 0.5, uv - 0.5) * 2.0) + (h(gl_FragCoord.xy * 0.37) - 0.5) * 0.08;
   gl_FragColor = vec4(c * g, min(a * g, 1.0));
 }`;
-let skySync = () => { }, skyState = null;
+let skySync = () => { }, skyState = null, skyStep = () => { };
 function startSky(force) {
   if ((NO_DRAW && !force) || skyState) return;
   const c = document.createElement('canvas'); c.width = 64; c.height = 36;
@@ -1043,7 +1043,7 @@ function startSky(force) {
   gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
   gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
   const t0 = performance.now();
-  let tex = null, lastSky = 0, drawn = '', raf = 0, draws = 0;
+  let tex = null, lastSky = 0, drawn = '', on = false, draws = 0;
   const paint = now => {
     // the picture is a third of the screen's size (the tube reads it by screen position), made again when that changes
     renderer.getDrawingBufferSize(cylUniforms.uScr.value);
@@ -1064,18 +1064,17 @@ function startSky(force) {
     gl.uniform2f(P.res, w, hh); gl.uniform1f(P.t, reduceMotion.matches ? 0 : (now - t0) / 1000);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4); tex.needsUpdate = true;
   };
-  const draw = now => {
-    raf = requestAnimationFrame(draw);
-    if (!document.hidden && now - lastSky >= 50) paint(now);
-  };
-  // the theme changed: the new picture is there for the very next frame of the scene, and a theme with none stops the loop
+  // a new picture goes with a frame of the scene that shows it (see drawFrame), so one nobody would see is never painted: no
+  // size, off the screen, or the scene at rest behind the playground's blur
+  skyStep = now => { if (on && now - lastSky >= 45) paint(now); };
+  // the theme changed: the new picture is there for the very next frame of the scene, and a theme with none stops painting
   // and gives the picture back
   skySync = () => {
-    if (PAL[theme].sky) { paint(performance.now()); if (!raf) raf = requestAnimationFrame(draw); return; }
-    cancelAnimationFrame(raf); raf = 0; drawn = '';
+    if (PAL[theme].sky) { paint(performance.now()); on = true; return; }
+    on = false; drawn = '';
     if (tex) { tex.dispose(); tex = null; cylUniforms.uSky.value = null; }
   };
-  skyState = () => ({ running: !!raf, name: drawn, draws, tex: !!tex, w: c.width, h: c.height, read: () => { const P = PAL[theme].sky && progOf(PAL[theme].sky); if (!P) return null; const px = new Uint8Array(c.width * c.height * 4); gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4); gl.readPixels(0, 0, c.width, c.height, gl.RGBA, gl.UNSIGNED_BYTE, px); return px; } });
+  skyState = () => ({ running: on, name: drawn, draws, tex: !!tex, w: c.width, h: c.height, read: () => { const P = PAL[theme].sky && progOf(PAL[theme].sky); if (!P) return null; const px = new Uint8Array(c.width * c.height * 4); gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4); gl.readPixels(0, 0, c.width, c.height, gl.RGBA, gl.UNSIGNED_BYTE, px); return px; } });
   skySync();
 }
 
@@ -4353,6 +4352,7 @@ const stageHasSize = () => stage.clientWidth > 1 && stage.clientHeight > 1;
 function redoLayout() { const t = performance.now() - 351; for (const w of wheels) if (!w.dying) w.repackAt = t || 1; }
 function fitToStage() {
   sceneDrawnForBoard = false;
+  wakeFrames();
   const k = stage.clientWidth + 'x' + stage.clientHeight; if (k === stageSize) return; stageSize = k;
   stage.classList.toggle('slim', stage.clientWidth < 480);
   applyCamera(); lastInputAt = performance.now();
@@ -4378,7 +4378,8 @@ if (window.ResizeObserver) new ResizeObserver(fitToStage).observe(stage);
 // and the GPU rests. any input or animation brings it straight back to full rate
 let lastInputAt = performance.now(), frameNo = 0;
 // (a video's play bar and a song tile's name and play button always stay)
-for (const ev of ['pointermove', 'pointerdown', 'wheel', 'keydown', 'touchstart']) addEventListener(ev, () => { lastInputAt = performance.now(); }, { capture: true, passive: true });
+// (and a pointer over the page says it is on screen, whatever the last word on that was)
+for (const ev of ['pointermove', 'pointerdown', 'wheel', 'keydown', 'touchstart']) addEventListener(ev, () => { lastInputAt = performance.now(); if (offScreen && ev !== 'keydown') { offScreen = false; wakeFrames(); } }, { capture: true, passive: true });
 // the distance blur reaches from the screen's edge over the parent column to its near edge, as it sits on screen at the
 // focus height (written only when it moves by a tenth of a percent): clear there, it grows toward the edge, so the parent
 // column's near side stays readable. none at the vault's top, with no parent column, and none in the behaviour tests,
@@ -4417,8 +4418,17 @@ function frameFailed(e) {
   if (window.reportError) try { reportError(e); } catch (e2) { /* the console has it */ }
   if (!frameErrSaid) { frameErrSaid = true; try { toast('The wheel hit an error: ' + m); } catch (e2) { /* the console has it */ } }
 }
+// a page nobody can see does no work, and no frame is even asked for, so the machine can rest: one hidden, one with no size
+// (a closed pane), or one off the screen (a collapsed sidebar or a closed drawer on a phone can keep their size). it starts
+// again by itself: a new size, the tab showing, or back on screen
+let offScreen = false, framesOn = false, frameAsked = false;
+const pageShows = () => !document.hidden && !offScreen && stage.clientWidth > 0;
+function wakeFrames() { if (framesOn && !frameAsked && pageShows()) { frameAsked = true; requestAnimationFrame(frame); } }
+document.addEventListener('visibilitychange', wakeFrames);
+if (window.IntersectionObserver) new IntersectionObserver(es => { offScreen = !es[es.length - 1].isIntersecting; wakeFrames(); }).observe(stage);
 function frame(now) {
   if (window.__VW_HALT__) return;
+  if (!pageShows()) { frameAsked = false; return; }
   requestAnimationFrame(frame);
   try { drawFrame(now); }
   catch (e) {
@@ -4429,8 +4439,6 @@ function frame(now) {
 }
 function drawFrame(now) {
   frameNo++;
-  // nothing is drawn for a page that is hidden or has no size (a closed pane)
-  if (document.hidden || !stage.clientWidth) return;
   // nothing moving: every other frame is drawn (the slow tube spin, the aurora and the clouds read the same), and after
   // four seconds of that every third
   // (never while the playground is open: its zoom, glide and strings run on every frame)
@@ -4551,9 +4559,11 @@ function drawFrame(now) {
   renderer.shadowMap.needsUpdate = onlyView ? (frameNo & 3) === 0 : now < shadowUntil || (frameNo & 7) === 0;
   // with the playground open the scene behind its blur is still: it is drawn once (and again after a theme change or a
   // resize), then left as it is until the board closes
-  if (!svOpen) sceneDrawnForBoard = false;
-  if (!NO_DRAW && !(svOpen && sceneDrawnForBoard)) { renderer.render(scene, camera); if (svOpen) sceneDrawnForBoard = true; }
-  else scene.updateMatrixWorld();      // what a draw would do for clicks and the screen hooks, without the pixels
+  const still = svOpen && sceneDrawnForBoard;
+  sceneDrawnForBoard = svOpen;
+  if (!still) skyStep(now);
+  if (NO_DRAW || still) scene.updateMatrixWorld();      // what a draw would do for clicks and the screen hooks, without the pixels
+  else renderer.render(scene, camera);
 }
 // the wheel looks at itself once it should be up: a content column with items and no card on screen is written to the
 // console with everything that could explain it, and laid out again once
@@ -4566,7 +4576,7 @@ const anyCardShown = c => [...c.entries.values()].some(cardShown);
 function selfCheck(tried) {
   if (window.__VW_HALT__) return;
   // (a closed pane shows nothing and is meant to: looked at again once it can show)
-  if (document.hidden || !stage.clientWidth || !stage.clientHeight) { setTimeout(() => selfCheck(tried), 3000); return; }
+  if (!pageShows() || !stage.clientHeight) { setTimeout(() => selfCheck(tried), 3000); return; }
   const c = child();
   if (!c || !c.items.length || anyCardShown(c)) { if (tried) console.warn('VaultWheel: cards are showing after the second layout'); return; }
   console.warn('VaultWheel: no card showing ' + JSON.stringify({ tried: !!tried, stage: [stage.clientWidth, stage.clientHeight], canvas: [canvas.width, canvas.height], theme, path: path.map(d => d.name),
@@ -4596,7 +4606,7 @@ async function start() {
   applyTheme();
   layoutWheels(null);
   $('#msg').remove();
-  requestAnimationFrame(frame);
+  framesOn = true; wakeFrames();
   setTimeout(selfCheck, 3000);
   setTimeout(startSky, 600);        // the sky starts just after the first frames, off the start
 }

@@ -17,6 +17,12 @@
     if(still) T(th+': held still for reduced motion', d===0 && s2.draws===s.draws, d+' '+s.draws+' '+s2.draws);
     else T(th+': the picture moves, about twenty times a second', d>(moves||0.02) && s2.draws>s.draws, d+' '+s.draws+' '+s2.draws);
   }
+  // nothing is painted that nobody would see: no size, or the scene at rest behind the playground
+  if(!still){ VW.setTheme('light'); const st=document.querySelector('#stage'); st.style.display='none'; dispatchEvent(new Event('resize')); await sl(200);
+    const n0=VW.sky().draws; await sl(500); T('a stage with no size paints no picture', VW.sky().draws===n0, n0+' '+VW.sky().draws);
+    st.style.display=''; dispatchEvent(new Event('resize')); await sl(500); T('and it comes back with the size', VW.sky().draws>n0, n0+' '+VW.sky().draws);
+    VWpg.openBoards(); await sl(400); const n1=VW.sky().draws; await sl(500); T('the board open paints no picture behind it', VW.sky().draws===n1, n1+' '+VW.sky().draws);
+    document.querySelector('#sv .pgx').click(); await sl(400); T('and it comes back with the board closed', VW.sky().draws>n1, n1+' '+VW.sky().draws); }
   // no picture in dark mode, no loop, and the texture is given back
   VW.setTheme('dark'); const s0=VW.sky(); await sl(600); const s1=VW.sky();
   T('dark: nothing running, nothing drawn', !s0.running && !s1.running && !s1.name && !s1.tex && s1.draws===s0.draws, JSON.stringify(s1));

@@ -2777,12 +2777,18 @@ function placeWheel(w, dt, now) {
   if (w.fvBlend) { const f = (now - w.fvBlend.t0) / 240; if (f >= 1) w.fvBlend = null; else fv = lerp(w.fvBlend.from, fvWant, f * f * (3 - 2 * f)); }
   w.fvNow = fv;
   const blurLen = w.level === 0 && !w.dying && w.spinK === INTRO_K && !reduceMotion.matches ? Math.abs(w.v) * (T.TEXT_H + T.GAP) * 0.006 : 0;
+  // a card of a list that has gone round behind the tube is not drawn, and casts nothing (it stays made, ready to come round
+  // again: a list keeps a quarter of its cards there). how far round one can still show is the geometry of a point lifted off the
+  // tube, seen past its rim from the camera as it is now, with room for the card's own height and its glow. (a mosaic keeps only
+  // those just past the rim already)
+  const camA = Math.atan2(camera.position.y, camera.position.z), rimA = Math.acos(Math.min(1, T.R / Math.hypot(camera.position.y, camera.position.z)));
   for (const e of w.entries.values()) {
     e.card.material.userData.blur.value = Math.min(0.12, blurLen / e.h);
     let op = w.alpha;
     if (grad) { const g = clamp(0.5 + (FOCUS_ANGLE - ang[e.index]) / 3.9, 0, 1), f = clamp((w.alpha - 0.55 * g) / 0.45, 0, 1); op = f * f * (3 - 2 * f); }
     // (a cut card stays dimmed until it is pasted or the cut is let go)
     placeEntry(e, ang[e.index], e.index === fi, false, dt, now, w.level, op * fv * (clip && clip.cut && clip.set.has(e.it.ref) ? CUT_DIM : 1));
+    if (!w.stops) { const h = e.h / 2; e.group.visible = e.op > 0.004 && Math.abs(ang[e.index] - camA) < rimA + Math.acos(T.R / (w.level ? R + h : Math.hypot(R, h))) + Math.atan2(h, R) + 0.2; }
   }
 }
 // opacity for a whole card; materials only go transparent while they need to

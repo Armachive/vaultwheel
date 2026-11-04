@@ -128,12 +128,39 @@ Third party, all built into `main.js` with their licences at the end of that fil
 | [gifenc](https://github.com/mattdesl/gifenc) | MIT |
 | [Libre Baskerville](https://github.com/impallari/Libre-Baskerville) | SIL Open Font License 1.1 |
 
+## What is in main.js
+
+The store installs only `main.js`, `manifest.json` and `styles.css`, so `main.js` holds everything, in this order:
+
+1. The plugin, which is `plugin/main.js` without its development parts.
+2. The licences of everything built in, as one comment.
+3. The page the wheel draws, as the string `VW_PAGE`. That is the page's HTML, CSS and JavaScript with its libraries and font inside, gzipped and then in base64 so the file stays small.
+
+When a view opens, `unpackPage` in `main.js` turns that string back into the page with `atob` and gunzip and puts it in the view's iframe. Nothing is fetched to do this. Inside the page the editors' libraries are in base64 once more, and each is decoded the first time its editor opens.
+
+To read the page, and to see it is what the source builds:
+
+```sh
+sed -n 's/^const VW_PAGE = "\(.*\)";$/\1/p' main.js | base64 -d | gunzip > page.html
+sh tools/build.sh bridge built.html public && cmp page.html built.html
+```
+
+Each release is built on GitHub from its tag by `.github/workflows/release.yml`, with an attestation for each file: `gh attestation verify main.js --repo Armachive/vaultwheel` checks one. `sh tools/release.sh` in a clean clone of the tag builds the same bytes.
+
+### libflac.wasm
+
+A scan of the plugin can report a reference to `src/libflac.wasm`. There is no such file here, and the plugin ships and runs no WebAssembly. The name comes from `vendor/audiomass/THIRD_PARTY_NOTICES.md`, the list [AudioMass](https://github.com/pkalogiros/AudioMass) keeps of the third party files in its own source, which is copied as it is into the licences in `main.js`.
+
+In AudioMass that file is libFLAC 1.3.3 built for the browser, under the Xiph (New BSD) licence, and its FLAC export runs on it. `vendor/audiomass/` does not carry `flac.js`, `libflac.js` or `libflac.wasm`, so the sound editor here cannot export FLAC. It exports mp3 and wav. The `rnn_denoise.wasm` and `lz4-block-codec.wasm` on that list are not here either.
+
 ## Building it yourself
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for how to build and test, and what a change must pass.
 
 `tools/release.sh` makes the three files in `build/release/`: `plugin/main.js` with the page built in, gzipped and in base64 to keep
 the file small. Change a library in `vendor/` and run it again to get a plugin with your copy.
 
 - `src/`: the page (`vaultwheel.html`, `cards.js`, the playground). `tools/build.sh bridge <out> public` builds it alone. With nothing after `<out>`, the empty folder gifs and the editors' libraries go in `vaultwheel-gifs.json` and `vaultwheel-vendor.json` beside it, and the page asks for each the first time it wants it.
 - `plugin/`: the plugin. The parts between `#if dev` lines are left out of a store build: they load a new `main.js` or page from the
-  plugin folder as you work, and show the **Reload on update** setting.
+  plugin folder as you work, show the **Reload on update** setting, and read what very old development builds left in the browser's storage.
 - `tests/`: behaviour checks in headless Chromium, run with `tools/runall.sh`, and `tests/plugintest.js` for the plugin in node.

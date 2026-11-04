@@ -204,26 +204,54 @@ function world(mobile, desktop, fresh) {
       if (opts.store) Object.assign(w.store, opts.store);
       const left = { n: 'left', size: opts.size || 300, collapsed: !!opts.collapsed, setSize(s) { this.size = s; log.push('size ' + s); }, expand() { this.collapsed = false; log.push('expand left'); } };
       const right = { n: 'right', collapsed: !!opts.rightShut, expand() { this.collapsed = false; log.push('expand right'); } }, main = { n: 'main' }, log = [], leaves = [];
-      const roots = { left, right, main };
-      const leaf = (r, type, state) => {
-        const l = { root: r, type, state, getRoot: () => r, parent: { selectTab() { log.push('shown ' + r.n); } }, getViewState: () => ({ type: l.type, state: l.state }),
+      const roots = { left, right, main }, named = {};
+      if (opts.device) w.dev['vaultwheel-device'] = JSON.stringify(opts.device);
+      // the stacked groups, as Obsidian has them (stack): a split holds groups of tabs. a leaf named without a group has one of its
+      // own (left/a names one), a new tab does not change which one a group shows by itself, and an empty group goes
+      const tabs = (r, at) => {
+        const g = { root: r, children: [], currentTab: 0, dimension: null, selectTab(l) { const i = g.children.indexOf(l); if (i >= 0) g.currentTab = i; log.push('shown ' + r.n); }, setDimension(d) { g.dimension = d; log.push('height ' + d); } };
+        r.children.splice(at === undefined ? r.children.length : at, 0, g); return g;
+      };
+      const groupFor = (r, name) => !opts.stack ? { selectTab() { log.push('shown ' + r.n); } } : name ? named[r.n + name] || (named[r.n + name] = tabs(r)) : tabs(r);
+      if (opts.stack) for (const x of [left, right, main]) x.children = [];
+      const views = { getViewCreatorByType: t => (opts.noView || []).includes(t) ? undefined : () => { }, getTypeByExtension: e => ({ base: 'bases', md: 'markdown' })[e] };
+      const leaf = (r, type, state, parent, at) => {
+        const g = parent || groupFor(r);
+        const l = { root: r, type, state, getRoot: () => r, parent: g, getViewState: () => ({ type: l.type, state: l.state }),
           view: { getViewType: () => l.type, frame: {} },
           setViewState: async s => { if (s.type === 'bad' || (s.type === 'all-properties' && opts.propsFail) || (s.type === VW && opts.wheelFails)) { if (s.type === VW) l.view.frame = null; l.type = 'empty'; return; } log.push('made ' + r.n + ' ' + s.type); l.type = s.type; l.state = s.state; },
-          detach() { log.push('gone ' + r.n + ' ' + l.type); leaves.splice(leaves.indexOf(l), 1); } };
+          openFile: async (f, o) => { if (opts.openFails) return; log.push('opened ' + r.n + ' ' + f.path); l.type = views.getTypeByExtension(f.extension); l.state = Object.assign({}, o.state, { file: f.path }); },
+          detach() {
+            log.push('gone ' + r.n + ' ' + l.type); leaves.splice(leaves.indexOf(l), 1);
+            if (!opts.stack) return;
+            const n = g.children.indexOf(l), cur = g.children[g.currentTab]; g.children.splice(n, 1);
+            if (!g.children.length) r.children.splice(r.children.indexOf(g), 1); else g.currentTab = n === g.currentTab ? Math.min(n, g.children.length - 1) : g.children.indexOf(cur);
+          } };
+        if (opts.stack) g.children.splice(at === undefined ? g.children.length : at, 0, l);
         return l;
       };
-      for (const f of [].concat(first || [])) { const [r, type, state] = f.split(':'); leaves.push(leaf(roots[r], type === undefined ? VW : type, state)); }
-      const make = r => () => { const l = leaf(r, 'empty'); leaves.push(l); return l; };
+      const build = list => { for (const f of [].concat(list || [])) { const [where, type, st] = f.split(':'), [n, name] = where.split('/'), x = roots[n], state = st && st.includes('=') ? Object.fromEntries(st.split(',').map(p => p.split('='))) : st; const l = leaf(x, type === undefined ? VW : type, state, groupFor(x, name)); if ((opts.linked || []).includes(l.type)) l.group = 'g'; leaves.push(l); } };
+      build(first);
+      const make = r => () => { const l = opts.stack ? leaf(r, 'empty', undefined, r.children[0] || tabs(r)) : leaf(r, 'empty'); leaves.push(l); return l; };
       const on = {};
-      // the stacked groups: each leaf is its own group here, and a split makes a new one above
       if (opts.stack) {
-        left.children = leaves.filter(l => l.root === left).map(l => l.parent);
-        w.app.workspace.createLeafBySplit = (at, dir, before) => { log.push('split ' + dir + ' ' + before); const l = leaf(left, 'empty'); l.parent.setDimension = d => log.push('height ' + d); leaves.push(l); left.children.unshift(l.parent); return l; };
+        Object.assign(w.app.workspace, {
+          createLeafBySplit: (at, dir, before) => { log.push('split ' + dir + ' ' + before); const r = at.root, g0 = at.parent, i = r.children.indexOf(g0), g = tabs(r, before ? i : i + 1); if (g0.dimension !== null) { g0.dimension /= 2; g.dimension = g0.dimension; } const l = leaf(r, 'empty', undefined, g); leaves.push(l); return l; },
+          createLeafInParent: (g, i) => { const l = leaf(g.root, 'empty', undefined, g, i); leaves.push(l); return l; } });
+        w.app.viewRegistry = views;
+        w.app.vault.getAbstractFileByPath = p => (opts.files || []).includes(p) ? Object.assign(new w.obsidian.TFile(), { path: p, extension: p.split('.').pop(), stat: {} }) : null;
       }
       Object.assign(w.app.workspace, { leftSplit: left, rightSplit: right, getLeftLeaf: make(left), getRightLeaf: make(right), getLeaf: () => make(main)(), getLeavesOfType: t => leaves.filter(l => l.type === t), iterateAllLeaves: f => [...leaves].forEach(f), revealLeaf: async () => log.push('revealed'), on: (e, f) => { on[e] = f; } });
       await w.start(); await new Promise(r => setTimeout(r, 5));
       const types = r => leaves.filter(l => l.root === roots[r]).map(l => l.type + (l.state ? ':' + l.state : '')).join();
-      return { log, w, leaves, left, right, types, make, leaf, roots, fire: async () => { on['layout-change'](); await new Promise(r => setTimeout(r, 5)); }, quit: () => on.quit(), settle: () => w.current().settle(), plugin: w.current() };
+      // a side as it stands: its groups by | with their tabs, a star on the one showing
+      const tree = r => roots[r].children.map(g => g.children.map((l, i) => l.type + (i === g.currentTab ? '*' : '')).join()).join('|');
+      const fire = async () => { on['layout-change'](); await new Promise(r => setTimeout(r, 5)); };
+      return { log, w, leaves, left, right, types, tree, make, leaf, roots, fire, quit: () => on.quit(), settle: () => w.current().settle(), plugin: w.current(),
+        // the plugin loaded again with the layout as it is: a restart, as far as it can tell
+        again: async () => { await w.app.plugins.disablePlugin(ID); await w.app.plugins.enablePlugin(ID); await new Promise(r => setTimeout(r, 5)); },
+        // a whole new layout coming in, a saved workspace say
+        load: async list => { for (const x of [left, right, main]) x.children = []; for (const k of Object.keys(named)) delete named[k]; leaves.length = 0; build(list); await fire(); } };
     };
     let r = await wheelIn(false, 'left');
     T('desktop: a wheel kept in the left sidebar comes back there after a restart that lost it', r.log.join() === 'made left ' + VW + ',shown left', r.log.join());
@@ -264,18 +292,18 @@ function world(mobile, desktop, fresh) {
     r = await wheelIn(false, 'left', ['left', 'left:tag:t'], { rightShut: true, store: { 'vaultwheel-moved': '1' } });
     T('after that a startup leaves it closed', !r.log.includes('expand right'), r.log.join());
     // the properties panel stays on the left, in its own group above the wheel
-    const PR = 'all-properties', stack = o => Object.assign({ stack: true }, o);
+    const PR = 'all-properties', stack = o => Object.assign({ stack: true }, o), TOPS = 'file-properties*,all-properties,backlink,outgoing-link';
     r = await wheelIn(false, 'left', ['left', 'right:' + PR + ':s'], stack());
-    T('properties sent right by the last build comes back with its state', r.types('left') === VW + ',' + PR + ':s' && r.types('right') === '', r.types('left') + ' / ' + r.types('right'));
+    T('properties sent right by the last build comes back with its state', r.types('left').includes(PR + ':s') && r.tree('left') === TOPS + '|' + VW + '*' && r.types('right') === '', r.types('left') + ' / ' + r.types('right'));
     T('in a group above the wheel, at its height, closed there only once it is open here', r.log.indexOf('split horizontal true') >= 0 && r.log.includes('height 27') && r.log.indexOf('made left ' + PR) < r.log.indexOf('gone right ' + PR), r.log.join());
     r = await wheelIn(false, 'left', ['left:' + PR + ':s', 'left', 'left:tag:t'], stack());
-    T('already above the wheel it stays as it is, and only the rest go right', !r.log.some(x => /split|height|gone left all/.test(x)) && r.types('left') === PR + ':s,' + VW && r.types('right') === 'tag:t', r.log.join());
+    T('already above the wheel it stays as it is, and only the rest go right', !r.log.some(x => /split|height|gone left all/.test(x)) && r.tree('left') === TOPS + '|' + VW + '*' && r.types('right') === 'tag:t', r.log.join());
     r = await wheelIn(false, 'left', ['left', 'left:' + PR + ':s'], stack());
-    T('below the wheel it moves above', r.log.includes('split horizontal true') && r.types('left') === VW + ',' + PR + ':s', r.log.join());
+    T('below the wheel it moves above', r.log.includes('split horizontal true') && r.tree('left') === TOPS + '|' + VW + '*', r.log.join());
     r = await wheelIn(false, 'left', ['left'], stack());
     T('closed everywhere it opens again', r.leaves.some(l => l.type === PR && l.root === r.left), r.types('left'));
     r = await wheelIn(false, 'left', ['left', 'right:' + PR + ':s'], stack({ propsFail: true }));
-    T('one that will not open here stays where it was', r.types('right') === PR + ':s' && r.types('left') === VW, r.types('left') + ' / ' + r.types('right'));
+    T('one that will not open here stays where it was', r.types('right') === PR + ':s' && r.tree('left') === 'file-properties*,backlink,outgoing-link|' + VW + '*', r.types('left') + ' / ' + r.types('right'));
     r = await wheelIn(true, 'left', ['left', 'left:' + PR + ':s', 'left:tag:t'], stack());
     T('a mobile drawer has no stacked groups: it stays a tab there', !r.log.some(x => /split/.test(x)) && r.types('left') === VW + ',' + PR + ':s' && r.types('right') === 'tag:t', r.log.join());
     r = await wheelIn(false, null); await r.plugin.toSidebar('left', true);
@@ -377,6 +405,109 @@ function world(mobile, desktop, fresh) {
     T('a sidebar wheel you close stays closed', r.plugin.stored() === 'none' && !r.types('left').includes(VW), r.plugin.stored());
     await r.plugin.open();
     T('and comes back there when you ask', r.types('left') === VW && r.plugin.stored() === 'left', r.types('left'));
+    // the left sidebar's top group: four panels above the wheel
+    const home = { home: 'left', props: true, closed: false, tablet: false }, four = ['right/r:outline:o', 'right/r:file-properties:f', 'right/r:tag:t', 'right/r:outgoing-link:g', 'right/r:backlink:b', 'right/r:all-properties:s'];
+    const tabsOf = (x, g) => x.roots[g.split('/')[0]].children[+g.split('/')[1]];
+    r = await wheelIn(false, null, ['left/w'].concat(four), stack({ device: home }));
+    T('top group: all four come from the right with their state, in order, file properties showing, the wheel alone below', r.tree('left') === TOPS + '|' + VW + '*' && r.tree('right') === 'outline*,tag' && r.types('left').includes('all-properties:s') && r.types('left').includes('backlink:b') && r.types('left').includes('outgoing-link:g') && r.types('left').includes('file-properties:f'), r.tree('left') + ' / ' + r.tree('right'));
+    T('each is closed only after its copy is open, and the group has its height', ['file-properties', PR, 'backlink', 'outgoing-link'].every(t => r.log.indexOf('made left ' + t) < r.log.indexOf('gone right ' + t)) && tabsOf(r, 'left/0').dimension === 27 && tabsOf(r, 'left/1').dimension === 73, r.log.join());
+    r = await wheelIn(false, null, ['left/a:' + PR + ':s', 'left/w'].concat(four.filter(f => !f.includes(PR))), stack({ device: home }));
+    { const n = r.log.filter(x => /^height/.test(x)).length; T('from the build before: the panel already above is joined by the rest, file properties showing, and the height stays', r.tree('left') === TOPS + '|' + VW + '*' && !n, r.tree('left') + ' ' + r.log.join()); }
+    r = await wheelIn(false, null, ['left/w', 'left/w:file-explorer:x', 'left/w:search:q', 'left/w:bookmarks:y'], stack({ device: home }));
+    T('everything else on the left goes right, nothing lost', r.tree('left') === TOPS + '|' + VW + '*' && r.types('right') === 'file-explorer:x,search:q,bookmarks:y', r.tree('left') + ' / ' + r.types('right'));
+    r = await wheelIn(false, null, ['left/w'].concat(four), stack({ device: home, noView: ['backlink', PR] }));
+    T('a core plugin that is off: its panel is skipped quietly, and nothing is made for it', r.tree('left') === 'file-properties*,outgoing-link|' + VW + '*' && r.types('right').includes('backlink:b') && r.types('right').includes(PR + ':s') && !r.w.notices.length, r.tree('left') + ' / ' + r.types('right') + ' / ' + r.w.notices.join());
+    r.settle(); await new Promise(res => setTimeout(res, 5));
+    T('and it has one more try when things have settled, then stays skipped', r.plugin.device.topPlaced === true && r.tree('left') === 'file-properties*,outgoing-link|' + VW + '*', JSON.stringify(r.plugin.device));
+    r = await wheelIn(false, null, ['left/w', 'main/m:backlink:b', 'main/m:markdown:n'], stack({ device: home, linked: ['backlink'] }));
+    T('a linked pane in the main area is not taken from its note', r.tree('left') === TOPS + '|' + VW + '*' && r.types('main').includes('backlink:b'), r.tree('left') + ' / ' + r.types('main'));
+    r = await wheelIn(false, null, ['left/a:file-properties:f', 'left/a:' + PR + ':s', 'left/a:backlink:b', 'left/a:outgoing-link:g', 'right/r:outline:o'], stack({ device: Object.assign({ topPlaced: true }, home) }));
+    T('a wheel that is not there gets a group of its own below them, and their height stays', r.tree('left') === TOPS + '|' + VW + '*' && r.tree('right') === 'outline*' && !r.log.some(x => /gone/.test(x)), r.tree('left') + ' ' + r.log.join());
+    // what you do with it after that stays
+    r = await wheelIn(false, null, ['left/w'].concat(four), stack({ device: home })); r.settle(); await r.fire();
+    { const t = tabsOf(r, 'left/0'); t.currentTab = 2; t.setDimension(40); const order = t.children.splice(0, 1); t.children.push(order[0]); t.currentTab = 1; r.log.length = 0; await r.again(); r.settle(); await r.fire();
+      T('a restart: what shows, the order and the height are as you left them', r.tree('left') === PR + ',backlink*,outgoing-link,file-properties|' + VW + '*' && t.dimension === 40 && !r.log.some(x => /made|gone|split/.test(x)), r.tree('left') + ' ' + r.log.join()); }
+    r = await wheelIn(false, null, ['left/w'].concat(four), stack({ device: home })); r.settle(); await r.fire();
+    r.leaves.find(l => l.type === 'backlink').detach(); await r.fire();
+    T('a panel you close is not added back', r.tree('left') === 'file-properties*,all-properties,outgoing-link|' + VW + '*' && r.plugin.device.topGone.join() === 'backlink', r.tree('left') + ' ' + JSON.stringify(r.plugin.device));
+    { const g = tabsOf(r, 'left/1'); r.leaves.push(r.leaf(r.left, 'tag', 'x', g)); await r.fire(); T('not when a tab dropped on the left is sent right either', r.tree('left') === 'file-properties*,all-properties,outgoing-link|' + VW + '*' && r.types('right').includes('tag:x'), r.tree('left') + ' / ' + r.types('right')); }
+    r.log.length = 0; await r.again(); r.settle(); await r.fire();
+    T('and a restart leaves it closed', r.tree('left') === 'file-properties*,all-properties,outgoing-link|' + VW + '*' && !r.log.some(x => /made/.test(x)), r.tree('left') + ' ' + r.log.join());
+    await r.plugin; await r.w.current().chooseHome('left'); await r.w.current().chooseHome('left-props');
+    T('choosing the home again brings it back', r.types('left').includes('backlink') && r.tree('left').startsWith('file-properties*,'), r.tree('left'));
+    r = await wheelIn(false, null, ['left/w'].concat(four), stack({ device: home })); r.settle(); await r.fire();
+    { const b = r.leaves.find(l => l.type === 'backlink'); b.detach(); const g = r.right.children[0], back = r.leaf(r.right, 'backlink', 'b', g); r.leaves.push(back); await r.fire(); await r.again(); r.settle(); await r.fire();
+      T('one you dragged to the right stays there, through a restart', r.types('right').includes('backlink:b') && !r.types('left').includes('backlink'), r.types('left') + ' / ' + r.types('right')); }
+    r = await wheelIn(false, null, ['left/w'].concat(four), stack({ device: home })); r.settle(); await r.fire();
+    { const t = tabsOf(r, 'left/0'); t.currentTab = 2; const b = r.leaves.find(l => l.type === 'outgoing-link'); b.detach(); const g = tabsOf(r, 'left/1'); r.leaves.push(r.leaf(r.left, 'outgoing-link', 'g', g)); await r.fire();
+      T('one dragged below the wheel goes back up, and what showed still shows', r.tree('left') === 'file-properties,all-properties,backlink*,outgoing-link|' + VW + '*', r.tree('left')); }
+    r = await wheelIn(false, null, ['left/w'].concat(four), stack({ device: home, noView: ['backlink'] })); r.settle(); await r.fire();
+    { const w2 = r.w.app.viewRegistry; w2.getViewCreatorByType = () => () => { }; await r.again(); r.settle(); await r.fire();
+      T('a core plugin turned on again: its panel comes up at the next start, and what shows stays', r.tree('left') === TOPS + '|' + VW + '*' && !r.types('right').includes('backlink'), r.tree('left') + ' / ' + r.tree('right')); }
+    r = await wheelIn(false, null, ['left/w'].concat(four), stack({ device: home })); r.settle(); await r.fire();
+    { const t = tabsOf(r, 'left/0'), wh = r.leaves.find(l => l.type === VW); t.setDimension(35); tabsOf(r, 'left/1').setDimension(65); r.plugin.noteHeight(wh); wh.detach(); t.dimension = null; await r.fire(); await r.plugin.open();
+      T('its height is remembered for a wheel closed and opened again', r.tree('left') === TOPS + '|' + VW + '*' && tabsOf(r, 'left/0').dimension === 35, r.tree('left') + ' ' + tabsOf(r, 'left/0').dimension); }
+    r = await wheelIn(false, null, ['left/w', 'left/w:' + PR + ':s', 'main/m:markdown:n'], stack({ fresh: true, device: { home: 'tab', props: false, closed: false, tablet: false } })); r.settle();
+    await r.plugin.chooseHome('left'); await r.plugin.chooseHome('left-props'); await r.plugin.chooseHome('tab');
+    T('a panel the wheel alone sent right still knows the left was its place', r.types('left').includes(PR + ':s') && !r.types('right').includes(PR), r.types('left') + ' / ' + r.types('right'));
+    // a saved workspace, and going back
+    r = await wheelIn(false, null, ['left/w'].concat(four), stack({ device: home })); r.settle(); await r.fire();
+    await r.load(['left/a:file-explorer:x', 'right/r:' + PR + ':s', 'main/m:markdown:n']);
+    T('a whole new layout: the wheel back, its group set up again, the rest right', r.tree('left') === TOPS + '|' + VW + '*' && r.types('right').includes('file-explorer:x') && r.plugin.stored() === 'left', r.tree('left') + ' / ' + r.tree('right'));
+    await r.load(['left/a:' + PR + ':s', 'left/a:backlink:b', 'left/w', 'main/m:markdown:n']);
+    { const t = tabsOf(r, 'left/0'); T('a saved layout that has the group keeps it as saved, with no double', r.tree('left').split('|').length === 2 && t.children.filter(l => l.type === 'backlink').length === 1, r.tree('left')); }
+    r = await wheelIn(false, null, ['left/w', 'left/w:tag:t', 'right/r:' + PR + ':s', 'right/r:backlink:b', 'main/m:markdown:n'], stack({ device: home, rightShut: true })); r.settle();
+    r.w.app.workspace.rightSplit.collapse = () => { r.right.collapsed = true; r.log.push('collapse right'); };
+    await r.plugin.giveLeftBack();
+    T('giving the left sidebar back: the wheel in a tab, each panel where it was, what was made for the group gone, the tabs home', r.types('main').includes(VW) && r.types('right').includes(PR + ':s') && r.types('right').includes('backlink:b') && r.types('left') === 'tag:t' && !r.leaves.some(l => l.type === 'file-properties' || l.type === 'outgoing-link'), r.types('left') + ' / ' + r.types('right'));
+    r = await wheelIn(true, null, ['left/w', 'left/w:' + PR + ':s', 'left/w:backlink:b', 'left/w:file-properties:f'], stack({ device: home }));
+    T('a phone: no group, All properties a tab beside the wheel as before, the rest right', !r.log.some(x => /split/.test(x)) && r.types('left') === VW + ',' + PR + ':s' && r.types('right') === 'backlink:b,file-properties:f', r.types('left') + ' / ' + r.types('right'));
+    r = await wheelIn(false, null, ['left/w'].concat(four), stack({ device: Object.assign({ propsWas: 'right' }, home) }));
+    T('a device with the old note of where the panel came from keeps it', r.plugin.device.topWas[PR] === 'right' && r.plugin.device.propsWas === undefined, JSON.stringify(r.plugin.device));
+    // the right sidebar's arrangement
+    const BASE = 'Folder/Index.base', on = (f, v) => JSON.stringify({ settings: { hover: true, reload: false, rightArrange: true, rightFile: f === undefined ? BASE : f, rightView: v === undefined ? 'Two' : v } });
+    const rightSide = ['right/r:tag:t', 'right/r:outline:o', 'right/r:search:q', 'main/m:markdown:n'], paneOf = x => x.leaves.find(l => l.type === 'bases');
+    r = await wheelIn(false, null, rightSide, stack({ fresh: true, files: [BASE] }));
+    T('right sidebar arrangement: off for a new install, and nothing happens', r.plugin.settings.rightArrange === false && r.tree('right') === 'tag*,outline,search' && !paneOf(r), r.tree('right'));
+    r = await wheelIn(false, null, rightSide, stack({ fresh: true, data: on(), files: [BASE] }));
+    T('on: outline shows, the other tabs stay with it, and the file is in a group of its own below at half the height, in the view chosen', r.tree('right') === 'tag,outline*,search|bases*' && r.right.children[1].dimension === 50 && r.right.children[0].dimension === 50 && paneOf(r).state.file === BASE && paneOf(r).state.viewName === 'Two', r.tree('right') + ' ' + JSON.stringify(paneOf(r) && paneOf(r).state));
+    { r.right.children[0].currentTab = 2; r.right.children[0].setDimension(60); r.right.children[1].setDimension(40); r.settle(); await r.fire(); r.log.length = 0; await r.again(); r.settle(); await r.fire();
+      T('a restart: what shows and the heights are as you left them, and no second pane', r.tree('right') === 'tag,outline,search*|bases*' && r.right.children[0].dimension === 60 && !r.log.some(x => /made|opened|split/.test(x)), r.tree('right') + ' ' + r.log.join());
+      paneOf(r).detach(); await r.fire(); T('the file\'s pane closed: not opened again', !paneOf(r) && r.w.current().device.rightGone === true, JSON.stringify(r.w.current().device));
+      r.log.length = 0; await r.again(); r.settle(); await r.fire(); T('nor by a restart', !paneOf(r) && !r.log.some(x => /opened/.test(x)), r.tree('right') + ' ' + r.log.join());
+      await r.w.current().saveRight('rightFile', BASE); T('saving the same file again changes nothing', !paneOf(r), r.tree('right'));
+      await r.w.current().saveRight('rightArrange', false); await r.w.current().saveRight('rightArrange', true); T('turned off and on: set up again', !!paneOf(r) && r.tree('right') === 'tag,outline*,search|bases*', r.tree('right')); }
+    r = await wheelIn(false, null, ['right/r:outline:o', 'right/r:tag:t', 'right/low:bases', 'main/m:markdown:n'], stack({ fresh: true, data: on(), files: [BASE] }));
+    T('a pane of another file stays too, and the chosen one comes below it', r.tree('right') === 'outline*,tag|bases*|bases*', r.tree('right'));
+    { const q = await wheelIn(false, null, ['right/r:outline:o', 'right/r:tag:t', 'right/low:bases:file=Other.base,viewName=One', 'main/m:markdown:n'], stack({ fresh: true, data: on('Other.base'), files: ['Other.base', BASE] }));
+      T('one already alone in a lower group keeps its height, and shows the view chosen', q.tree('right') === 'outline*,tag|bases*' && q.leaves.find(l => l.type === 'bases').state.viewName === 'Two' && !q.log.some(x => /height/.test(x)), q.tree('right') + ' ' + q.log.join());
+      await q.w.current().saveRight('rightFile', BASE); T('another file chosen: the same pane shows it, no new one', q.tree('right') === 'outline*,tag|bases*' && q.leaves.find(l => l.type === 'bases').state.file === BASE, q.tree('right') + ' ' + JSON.stringify(q.leaves.find(l => l.type === 'bases').state));
+      await q.w.current().saveRight('rightView', 'Three'); T('another view chosen: the same pane shows it', q.leaves.find(l => l.type === 'bases').state.viewName === 'Three', JSON.stringify(q.leaves.find(l => l.type === 'bases').state)); }
+    { const q = await wheelIn(false, null, ['right/r:outline:o', 'right/r:bases:file=' + BASE + ',zoom=2', 'right/r:tag:t', 'main/m:markdown:n'], stack({ fresh: true, data: on(), files: [BASE] }));
+      T('one open as a tab among the others moves to a group of its own, with its state, closed only once it is open there', q.tree('right') === 'outline*,tag|bases*' && q.leaves.find(l => l.type === 'bases').state.zoom === '2' && q.log.indexOf('opened right ' + BASE) < q.log.indexOf('gone right bases'), q.tree('right') + ' ' + q.log.join()); }
+    r = await wheelIn(false, null, ['left/w', 'left/w:outline:o', 'right/r:tag:t', 'main/m:markdown:n'], stack({ fresh: true, data: on(), files: [BASE], device: Object.assign({}, home) }));
+    T('with the wheel on the left too: outline goes right and shows, and the file is below', r.tree('right') === 'tag,outline*|bases*' || r.tree('right') === 'outline*,tag|bases*', r.tree('right') + ' / ' + r.tree('left'));
+    r = await wheelIn(false, null, ['right/r:tag:t', 'main/m:markdown:n'], stack({ fresh: true, data: on(), files: [BASE], noView: ['outline'] }));
+    T('outline\'s core plugin off: skipped quietly, the file still there', r.tree('right') === 'tag*|bases*' && !r.w.notices.length, r.tree('right'));
+    r = await wheelIn(false, null, ['right/r:tag:t', 'main/m:markdown:n'], stack({ fresh: true, data: on('No/Such.base'), files: [BASE] }));
+    T('a file that is not there: nothing but outline, and no complaint', r.tree('right') === 'outline*,tag' && !r.w.notices.length, r.tree('right'));
+    { r.right.children[0].currentTab = 1; r.w.current().device.rightGone = false; r.w.current().settings.rightFile = 'No/Such.base'; const y = r.w.app.vault.getAbstractFileByPath; r.w.app.vault.getAbstractFileByPath = p => p === 'No/Such.base' ? Object.assign(new r.w.obsidian.TFile(), { path: p, extension: 'base', stat: {} }) : y(p); await r.w.current().arrangeRight(false);
+      T('when it arrives its pane opens, and what showed still shows', r.tree('right') === 'outline,tag*|bases*', r.tree('right')); }
+    r = await wheelIn(false, null, ['right/r:' + VW, 'right/r:outline:o', 'main/m:markdown:n'], stack({ fresh: true, data: on(), files: [BASE], device: { home: 'right', props: false, closed: false, tablet: false } }));
+    T('a wheel living in the right sidebar stays the one showing', r.tree('right').split('|')[0].includes(VW + '*') && r.tree('right').split('|')[1] === 'bases*', r.tree('right'));
+    r = await wheelIn(false, null, rightSide, stack({ fresh: true, data: on(), files: [BASE] })); r.settle();
+    await r.load(['right/r:bookmarks:y', 'right/r:outline:o', 'main/m:markdown:n']);
+    T('a whole new layout without the file: set up for that one too', r.tree('right') === 'bookmarks,outline*|bases*', r.tree('right'));
+    await r.load(['right/r:bookmarks:y', 'right/r:outline:o', 'right/z:bases:file=' + BASE + ',viewName=Saved', 'main/m:markdown:n']);
+    T('one with the file keeps what it saved', r.tree('right') === 'bookmarks*,outline|bases*' && r.leaves.find(l => l.type === 'bases').state.viewName === 'Saved', r.tree('right'));
+    r = await wheelIn(true, null, rightSide, stack({ fresh: true, data: on(), files: [BASE] }));
+    T('a phone: the synced setting does nothing', r.tree('right') === 'tag*,outline,search' && !paneOf(r), r.tree('right'));
+    r = await wheelIn(false, null, rightSide, stack({ fresh: true, data: on(), files: [BASE] }));
+    { const q = r.plugin, say = m => new Promise(res => q.handle(Object.assign({ vw: 1, id: 1 }, m), { postMessage: res })); await say({ t: 'savePrefs', prefs: { dirs: { a: { u: 1 } } } });
+      const disk = JSON.parse(r.w.files.get(DIR + '/data.json')), got = await say({ t: 'prefs' });
+      T('the setting survives a save of the page\'s, and the page does not see it', disk.settings.rightFile === BASE && disk.settings.rightView === 'Two' && disk.settings.rightArrange === true && disk.dirs.a.u === 1 && !('settings' in got.prefs), JSON.stringify(disk)); }
+    r = await wheelIn(false, null, ['right/r:outline:o', 'main/m:markdown:n'], stack({ fresh: true, data: on(), files: [BASE], openFails: true }));
+    T('a file that will not open leaves no empty group', r.tree('right') === 'outline*' && !paneOf(r), r.tree('right'));
     // the pictures' sizes kept between listings: only so many, the oldest going first
     {
       const fs = require('fs'), tmp = require('os').tmpdir() + '/vw-size-' + process.pid + '.png', head = Buffer.alloc(24); head.writeUInt32BE(0x89504e47, 0); head.writeUInt32BE(0x49484452, 12); head.writeUInt32BE(40, 16); head.writeUInt32BE(30, 20);

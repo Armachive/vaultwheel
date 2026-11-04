@@ -1,7 +1,7 @@
 {
   "id": "vaultwheel",
   "name": "VaultWheel",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "minAppVersion": "1.8.7",
   "description": "Browse the vault as columns of cards on a turning cylinder. Carry files in a stack, arrange and move them in a playground, and scale any folder up to a collage.",
   "author": "Armachive",

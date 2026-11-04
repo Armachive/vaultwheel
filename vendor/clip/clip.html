@@ -1,0 +1,1782 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Clip — Video Editor</title>
+<style>
+  :root{
+    --bg:#0e0f13; --panel:#16181f; --panel2:#1d2029; --line:#2a2e3a;
+    --txt:#e7e9ee; --mut:#8b90a0; --acc:#5b8cff; --acc2:#7af0c0;
+    --warn:#ffb454; --danger:#ff6b6b; --track:#222632;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{margin:0;background:var(--bg);color:var(--txt);
+    font:13px/1.4 system-ui,Segoe UI,Roboto,sans-serif;overflow:hidden;
+    display:flex;flex-direction:column;user-select:none}
+  button{font:inherit;color:var(--txt);background:var(--panel2);border:1px solid var(--line);
+    border-radius:7px;padding:6px 11px;cursor:pointer}
+  button:hover{border-color:var(--acc);background:#252938}
+  button:disabled{opacity:.4;cursor:default}
+  button.primary{background:var(--acc);border-color:var(--acc);color:#0b1020;font-weight:600}
+  button.primary:hover{background:#6f9bff}
+  button.danger:hover{border-color:var(--danger);color:var(--danger)}
+  input[type=number],input[type=text]{background:#0c0d11;border:1px solid var(--line);
+    color:var(--txt);border-radius:6px;padding:5px 7px;width:70px}
+  input[type=range]{width:100%;accent-color:var(--acc)}
+  label{color:var(--mut);font-size:12px}
+  .row{display:flex;align-items:center;gap:8px}
+  .col{display:flex;flex-direction:column;gap:6px}
+
+  /* ---- top bar ---- */
+  header{display:flex;align-items:center;gap:10px;padding:9px 14px;
+    background:var(--panel);border-bottom:1px solid var(--line);flex:0 0 auto}
+  header .logo{font-weight:700;letter-spacing:.5px;font-size:15px}
+  header .logo b{color:var(--acc)}
+  header .spacer{flex:1}
+  .hint{color:var(--mut);font-size:11px}
+
+  /* ---- main split ---- */
+  main{flex:1;display:flex;min-height:0}
+  .stage{flex:1;display:flex;flex-direction:column;min-width:0;background:#08090c}
+  .canvas-wrap{flex:1;display:flex;align-items:center;justify-content:center;position:relative;min-height:0;padding:14px}
+  canvas#preview{max-width:100%;max-height:100%;background:#000;box-shadow:0 4px 30px #000;border-radius:4px}
+  .transport{display:flex;align-items:center;gap:10px;padding:8px 14px;background:var(--panel);
+    border-top:1px solid var(--line)}
+  .time{font-variant-numeric:tabular-nums;color:var(--mut);min-width:120px}
+  .time b{color:var(--txt)}
+
+  /* ---- right inspector ---- */
+  aside{width:288px;flex:0 0 auto;background:var(--panel);border-left:1px solid var(--line);
+    overflow-y:auto;padding:12px}
+  aside h3{margin:2px 0 10px;font-size:12px;text-transform:uppercase;letter-spacing:.6px;color:var(--mut)}
+  .field{display:flex;flex-direction:column;gap:4px;margin-bottom:12px}
+  .field .row{justify-content:space-between}
+  .val{color:var(--txt);font-variant-numeric:tabular-nums}
+  .empty{color:var(--mut);font-style:italic;padding:20px 0;text-align:center}
+  .kf-list{display:flex;flex-direction:column;gap:5px;margin-top:6px}
+  .kf-item{display:flex;align-items:center;gap:6px;background:var(--panel2);border:1px solid var(--line);
+    border-radius:6px;padding:5px 7px;font-size:12px}
+  .kf-item.active{border-color:var(--acc2)}
+  .kf-item .t{color:var(--acc2);font-variant-numeric:tabular-nums;min-width:46px}
+  .kf-item button{padding:2px 6px;font-size:11px}
+  .seg{display:flex;border:1px solid var(--line);border-radius:7px;overflow:hidden}
+  .seg button{border:0;border-radius:0;border-right:1px solid var(--line)}
+  .seg button:last-child{border-right:0}
+  .seg button.on{background:var(--acc);color:#0b1020}
+
+  /* ---- timeline ---- */
+  .timeline{flex:0 0 auto;height:236px;background:var(--panel);border-top:1px solid var(--line);
+    display:flex;flex-direction:column}
+  .tl-toolbar{display:flex;align-items:center;gap:8px;padding:6px 12px;border-bottom:1px solid var(--line)}
+  .tl-scroll{flex:1;overflow-x:auto;overflow-y:hidden;position:relative}
+  .tl-inner{position:relative;height:100%;min-width:100%}
+  .ruler{position:relative;height:22px;border-bottom:1px solid var(--line);background:#12141b}
+  .ruler .tick{position:absolute;top:0;height:100%;border-left:1px solid #2c3140;
+    font-size:10px;color:var(--mut);padding-left:3px;padding-top:4px}
+  .tracks{position:relative}
+  .track{position:relative;height:84px;background:var(--track);border-bottom:1px solid var(--line);
+    background-image:linear-gradient(90deg,#0000 0,#0000 calc(100% - 1px),#0000 100%)}
+  .track.text-track{height:42px;background:#191b22}
+  .txtbar{position:absolute;top:5px;height:32px;border-radius:6px;cursor:grab;overflow:hidden;
+    background:linear-gradient(180deg,#5a4a2e,#473722);border:1px solid #7a6334;
+    display:flex;align-items:center;padding:0 8px;font-size:11px;color:#ffe9c2;white-space:nowrap;
+    text-overflow:ellipsis;box-shadow:0 1px 4px #0006}
+  .txtbar.sel{border-color:var(--warn);box-shadow:0 0 0 2px var(--warn)}
+  .txtbar .handle{position:absolute;top:0;height:100%;width:7px;cursor:ew-resize}
+  .txtbar .handle.l{left:0}.txtbar .handle.r{right:0}
+  .txtbar .handle:hover{background:#fff3}
+  .clip{position:absolute;top:6px;height:72px;border-radius:7px;overflow:hidden;cursor:grab;
+    background:linear-gradient(180deg,#2c3a5e,#243049);border:1px solid #3a4d78;
+    box-shadow:0 1px 4px #0006}
+  .clip.sel{border-color:var(--acc);box-shadow:0 0 0 2px var(--acc)}
+  .clip .label{position:absolute;top:3px;left:6px;right:6px;font-size:11px;color:#dfe6ff;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;pointer-events:none;text-shadow:0 1px 2px #000}
+  .clip .thumbs{position:absolute;bottom:0;left:0;right:0;height:46px;display:flex;opacity:.85;pointer-events:none}
+  .clip .thumbs img{height:100%;width:auto;object-fit:cover}
+  .clip .fade{position:absolute;top:0;height:100%;pointer-events:none}
+  .clip .fade.in{left:0;background:linear-gradient(90deg,#000c,#0000)}
+  .clip .fade.out{right:0;background:linear-gradient(270deg,#000c,#0000)}
+  .clip .trans{position:absolute;top:0;left:0;height:100%;z-index:2;pointer-events:none;
+    display:flex;align-items:center;justify-content:center;font-size:13px;color:#0b1020;
+    background:repeating-linear-gradient(45deg,#7af0c0aa 0 5px,#7af0c066 5px 10px);
+    border-right:1px solid var(--acc2)}
+  .clip .handle{position:absolute;top:0;height:100%;width:8px;cursor:ew-resize;z-index:3}
+  .clip .handle.l{left:0}.clip .handle.r{right:0}
+  .clip .handle:hover{background:#fff3}
+  .clip .kf{position:absolute;bottom:3px;width:11px;height:11px;background:var(--acc2);
+    border:1px solid #0b1020;transform:translateX(-50%) rotate(45deg);z-index:4;
+    pointer-events:auto;cursor:ew-resize;transition:background .1s}
+  .clip .kf:hover{background:#fff;box-shadow:0 0 0 2px var(--acc2)}
+  .playhead{position:absolute;top:0;width:2px;background:var(--warn);z-index:9;pointer-events:none}
+  .playhead::before{content:"";position:absolute;top:0;left:-5px;border:6px solid transparent;
+    border-top-color:var(--warn)}
+  .tl-scroll.drop{outline:2px dashed var(--acc);outline-offset:-4px}
+
+  .toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:#000d;
+    border:1px solid var(--line);padding:10px 16px;border-radius:9px;z-index:50;max-width:70%}
+  .toast.err{border-color:var(--danger);color:#ffd0d0}
+  .modal{position:fixed;inset:0;background:#000a;display:flex;align-items:center;justify-content:center;z-index:60}
+  .modal .box{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:22px;width:340px}
+  .modal h2{margin:0 0 12px;font-size:16px}
+  .bar{height:9px;background:var(--panel2);border-radius:5px;overflow:hidden;margin:12px 0}
+  .bar i{display:block;height:100%;width:0;background:var(--acc);transition:width .15s}
+  .hidden{display:none!important}
+
+  /* ---- help button + overlay ---- */
+  .help-btn{width:30px;height:30px;padding:0;border-radius:50%;font-weight:700;font-size:15px;
+    line-height:1;flex:0 0 auto;color:var(--acc2);border-color:#39414f}
+  .help-btn:hover{border-color:var(--acc2);color:#fff;background:#252938}
+  .help{position:fixed;inset:0;background:#000c;backdrop-filter:blur(3px);z-index:80;
+    display:flex;align-items:center;justify-content:center;padding:30px;
+    animation:helpFade .16s ease}
+  @keyframes helpFade{from{opacity:0}to{opacity:1}}
+  .help-box{background:var(--panel);border:1px solid var(--line);border-radius:14px;
+    width:min(860px,100%);max-height:100%;display:flex;flex-direction:column;
+    box-shadow:0 20px 80px #000b;overflow:hidden}
+  .help-head{display:flex;align-items:center;gap:12px;padding:18px 24px;
+    border-bottom:1px solid var(--line);background:linear-gradient(180deg,#1b1e27,#16181f)}
+  .help-head .mark{font-size:22px;color:var(--acc)}
+  .help-head h1{margin:0;font-size:19px;font-weight:700;letter-spacing:.3px}
+  .help-head h1 span{color:var(--mut);font-weight:400;font-size:13px;margin-left:8px}
+  .help-head .x{margin-left:auto;width:32px;height:32px;border-radius:8px;font-size:17px;padding:0}
+  .help-body{overflow-y:auto;padding:8px 24px 26px;scroll-behavior:smooth}
+  .help-body::-webkit-scrollbar{width:10px}
+  .help-body::-webkit-scrollbar-thumb{background:#2c3140;border-radius:6px;border:2px solid var(--panel)}
+  .help-sec{padding:18px 0;border-bottom:1px solid #20232d}
+  .help-sec:last-child{border-bottom:0}
+  .help-sec h2{margin:0 0 4px;font-size:14px;color:var(--acc);
+    display:flex;align-items:center;gap:9px;letter-spacing:.3px}
+  .help-sec h2 .ico{font-size:16px;filter:grayscale(.1)}
+  .help-sec p{margin:8px 0;color:var(--txt);font-size:13px;line-height:1.6}
+  .help-sec p.lead{color:var(--mut)}
+  .help-sec ul{margin:8px 0;padding-left:4px;list-style:none;display:flex;flex-direction:column;gap:7px}
+  .help-sec li{position:relative;padding-left:22px;font-size:13px;line-height:1.55;color:var(--txt)}
+  .help-sec li::before{content:"›";position:absolute;left:6px;top:-1px;color:var(--acc2);font-weight:700}
+  .help-sec li b{color:#fff;font-weight:600}
+  .help-sec code,.help-sec .key{background:#0c0d11;border:1px solid var(--line);border-radius:5px;
+    padding:1px 7px;font:12px/1.5 ui-monospace,Menlo,Consolas,monospace;color:var(--acc2);
+    white-space:nowrap;display:inline-block}
+  .help-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px 26px;margin-top:10px}
+  @media(max-width:620px){.help-grid{grid-template-columns:1fr}}
+  .help-kb{display:flex;align-items:center;justify-content:space-between;gap:10px;
+    padding:6px 0;border-bottom:1px dashed #20232d}
+  .help-kb span{color:var(--mut);font-size:12.5px}
+  .help-toc{display:flex;flex-wrap:wrap;gap:7px;padding:14px 0 4px}
+  .help-toc a{font-size:12px;color:var(--mut);text-decoration:none;background:var(--panel2);
+    border:1px solid var(--line);border-radius:20px;padding:4px 11px;cursor:pointer}
+  .help-toc a:hover{border-color:var(--acc);color:var(--txt)}
+  .help-foot{padding:14px 24px;border-top:1px solid var(--line);color:var(--mut);font-size:12px;
+    display:flex;align-items:center;gap:8px;background:#13151c}
+  .help-foot b{color:var(--acc2)}
+</style>
+</head>
+<body>
+<header>
+  <div class="logo"><b>◢</b> Clip</div>
+  <button id="addBtn">＋ Add video</button>
+  <button id="addTextBtn" title="Add a title / text overlay at the playhead">＋ Text</button>
+  <button id="addColorBtn" title="Add a solid-colour clip (intro/outro card)">＋ Color</button>
+  <div class="seg" title="Tool">
+    <button id="tSelect" class="on">Select</button>
+    <button id="tCut">Cut ✂</button>
+  </div>
+  <button id="splitBtn" title="Split selected clip at playhead (S)">Split at playhead</button>
+  <button id="delBtn" class="danger" title="Delete selected clip (Del)">Delete</button>
+  <button id="undoBtn" title="Undo (Ctrl+Z)" disabled>↶ Undo</button>
+  <button id="redoBtn" title="Redo (Ctrl+Shift+Z / Ctrl+Y)" disabled>↷ Redo</button>
+  <div class="spacer"></div>
+  <span class="hint" id="saveState"></span>
+  <button id="saveBtn" title="Save this project (Ctrl+S)">💾 Save</button>
+  <button id="openBtn" title="Open a saved project">📂 Open</button>
+  <span class="hint" id="resHint">no media</span>
+  <button id="exportBtn" class="primary">Export MP4</button>
+  <button id="exportGifBtn" title="Export an animated, looping GIF (downscaled for size)">GIF</button>
+  <button id="helpBtn" class="help-btn" title="How to use Clip (?)">?</button>
+  <input type="file" id="fileInput" accept="video/*" multiple class="hidden">
+</header>
+
+<main>
+  <div class="stage">
+    <div class="canvas-wrap">
+      <canvas id="preview" width="1280" height="720"></canvas>
+    </div>
+    <div class="transport">
+      <button id="playBtn">▶ Play</button>
+      <button id="stopBtn">⏹</button>
+      <span class="time"><b id="curTime">0:00.00</b> / <span id="totTime">0:00.00</span></span>
+      <input type="range" id="scrub" min="0" max="1000" value="0" step="1" style="flex:1">
+    </div>
+  </div>
+
+  <aside id="inspector">
+    <div id="inspEmpty" class="empty">Select a clip to edit its properties.</div>
+    <div id="inspBody" class="hidden">
+      <h3>Clip</h3>
+      <div class="field">
+        <div class="row"><label>Name</label><span class="val" id="cName">—</span></div>
+        <div class="row" id="cDurRow"><label>Source dur</label><span class="val" id="cDur">—</span></div>
+        <div class="row"><label>On timeline</label><span class="val" id="cTLDur">—</span></div>
+      </div>
+
+      <div id="colorSec" class="hidden">
+        <h3>Background color</h3>
+        <div class="field">
+          <div class="row"><label>Color</label><input type="color" id="clipColor" value="#1e2030" style="width:48px;height:26px;padding:0;border:1px solid var(--line);background:#0c0d11;border-radius:6px"></div>
+          <div class="row"><label>Duration (s)</label><input type="number" id="clipDur" min="0.2" step="0.1" value="3"></div>
+        </div>
+      </div>
+
+      <div id="speedSec">
+      <h3>Speed</h3>
+      <div class="field">
+        <div class="row"><label>Playback rate</label>
+          <span class="row" style="gap:4px"><input type="number" id="speedNum" min="0.1" max="16" step="0.05" value="1" style="width:58px"><span class="val">×</span></span>
+        </div>
+        <input type="range" id="speed" min="0" max="1000" step="1" value="454">
+        <div class="hint">0.1× (10× slow-mo) → 16× fast (log scale, 1× ≈ centre) · type an exact value above. Export speed is unlimited.</div>
+      </div>
+      </div><!-- /speedSec -->
+
+      <h3>Transition (from previous clip)</h3>
+      <div class="field" id="transField">
+        <div class="row"><label>Type</label>
+          <select id="transType" style="background:#0c0d11;border:1px solid var(--line);color:var(--txt);border-radius:6px;padding:5px 7px">
+            <option value="none">None (cut)</option>
+            <option value="crossfade">Crossfade</option>
+            <option value="dip">Dip to black</option>
+          </select>
+        </div>
+        <div class="row"><label>Duration</label><input type="number" id="transDur" min="0.1" step="0.1" value="0.5"></div>
+        <div class="hint" id="transHint">Overlaps this clip with the previous one to blend them.</div>
+      </div>
+
+      <h3>Fades (timeline seconds)</h3>
+      <div class="field">
+        <div class="row"><label>Fade in</label><input type="number" id="fadeIn" min="0" step="0.1" value="0"></div>
+        <div class="row"><label>Fade out</label><input type="number" id="fadeOut" min="0" step="0.1" value="0"></div>
+      </div>
+
+      <div id="trimSec">
+      <h3>Trim (source seconds)</h3>
+      <div class="field">
+        <div class="row"><label>In</label><input type="number" id="inPt" min="0" step="0.05"></div>
+        <div class="row"><label>Out</label><input type="number" id="outPt" min="0" step="0.05"></div>
+        <div class="hint">Tip: drag clip edges on the timeline to trim.</div>
+      </div>
+      </div><!-- /trimSec -->
+
+      <div id="kfSec">
+      <h3>Zoom / Pan keyframes</h3>
+      <div class="field">
+        <div class="hint">Move playhead inside the clip, set scale + position, then add a keyframe. Two+ keyframes animate.</div>
+        <div class="row"><label>Scale</label><span class="val" id="scaleVal">1.00×</span></div>
+        <input type="range" id="scale" min="1" max="6" step="0.05" value="1">
+        <div class="row"><label>Pan X</label><span class="val" id="panxVal">50%</span></div>
+        <input type="range" id="panx" min="0" max="100" step="1" value="50">
+        <div class="row"><label>Pan Y</label><span class="val" id="panyVal">50%</span></div>
+        <input type="range" id="pany" min="0" max="100" step="1" value="50">
+        <button id="addKf" style="margin-top:8px;width:100%">◆ Add keyframe at playhead</button>
+        <div class="kf-list" id="kfList"></div>
+      </div>
+      </div><!-- /kfSec -->
+    </div>
+
+    <div id="textBody" class="hidden">
+      <h3>Text overlay</h3>
+      <div class="field">
+        <textarea id="txtContent" rows="2" style="width:100%;background:#0c0d11;border:1px solid var(--line);color:var(--txt);border-radius:6px;padding:6px;resize:vertical;font:inherit"></textarea>
+        <div class="hint">Drag the text on the preview to position it.</div>
+      </div>
+      <h3>Style</h3>
+      <div class="field">
+        <div class="row"><label>Size</label><input type="range" id="txtSize" min="2" max="20" step="0.5" value="8"><span class="val" id="txtSizeVal">8%</span></div>
+        <div class="row"><label>Color</label><input type="color" id="txtColor" value="#ffffff" style="width:48px;height:26px;padding:0;border:1px solid var(--line);background:#0c0d11;border-radius:6px"></div>
+        <div class="row"><label>Font</label>
+          <select id="txtFont" style="background:#0c0d11;border:1px solid var(--line);color:var(--txt);border-radius:6px;padding:5px 7px">
+            <option value="system-ui, sans-serif">Sans</option>
+            <option value="Georgia, serif">Serif</option>
+            <option value="'Courier New', monospace">Mono</option>
+            <option value="Impact, sans-serif">Impact</option>
+          </select>
+        </div>
+        <div class="row"><label>Align</label>
+          <div class="seg"><button id="txtAlignL">L</button><button id="txtAlignC" class="on">C</button><button id="txtAlignR">R</button></div>
+        </div>
+        <div class="row"><label>Bold</label><input type="checkbox" id="txtBold" checked></div>
+        <div class="row"><label>Backdrop box</label><input type="checkbox" id="txtBg"></div>
+      </div>
+      <h3>Timing (timeline seconds)</h3>
+      <div class="field">
+        <div class="row"><label>Start</label><input type="number" id="txtStart" min="0" step="0.1"></div>
+        <div class="row"><label>End</label><input type="number" id="txtEnd" min="0" step="0.1"></div>
+        <div class="row"><label>Fade in</label><input type="number" id="txtFadeIn" min="0" step="0.1" value="0"></div>
+        <div class="row"><label>Fade out</label><input type="number" id="txtFadeOut" min="0" step="0.1" value="0"></div>
+        <div class="hint">Tip: drag the bar on the text track to move it; ✕ deletes.</div>
+        <button id="txtDel" class="danger" style="width:100%;margin-top:6px">Delete text</button>
+      </div>
+    </div>
+  </aside>
+</main>
+
+<div class="timeline">
+  <div class="tl-toolbar">
+    <label>Zoom</label>
+    <input type="range" id="tlZoom" min="2" max="400" value="80" step="1" style="width:140px">
+    <span class="hint">px/sec: <span id="ppsVal">80</span></span>
+    <button id="fitBtn" title="Zoom to fit the whole timeline">Fit</button>
+    <div class="spacer" style="flex:1"></div>
+    <span class="hint">Drag clips to move (auto-scrolls at edges) · drag edges to trim · click to select</span>
+  </div>
+  <div class="tl-scroll" id="tlScroll">
+    <div class="tl-inner" id="tlInner">
+      <div class="ruler" id="ruler"></div>
+      <div class="tracks" id="tracks">
+        <div class="track" id="track0"></div>
+        <div class="track text-track" id="trackText"></div>
+      </div>
+      <div class="playhead" id="playhead" style="height:100%"></div>
+    </div>
+  </div>
+</div>
+
+<div id="modal" class="modal hidden">
+  <div class="box">
+    <h2 id="modalTitle">Exporting…</h2>
+    <div class="hint" id="modalMsg">Preparing</div>
+    <div class="bar"><i id="modalBar"></i></div>
+    <div class="row" style="justify-content:flex-end;margin-top:8px">
+      <button id="modalCancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<div id="projModal" class="modal hidden">
+  <div class="box" style="width:420px">
+    <h2>Open project</h2>
+    <div id="projList" style="max-height:340px;overflow-y:auto;display:flex;flex-direction:column;gap:6px"></div>
+    <div class="row" style="justify-content:flex-end;margin-top:14px">
+      <button id="projClose">Close</button>
+    </div>
+  </div>
+</div>
+
+<div id="help" class="help hidden">
+  <div class="help-box">
+    <div class="help-head">
+      <span class="mark">◢</span>
+      <h1>Clip <span>browser video editor — quick guide</span></h1>
+      <button class="x" id="helpClose" title="Close (Esc)">✕</button>
+    </div>
+    <div class="help-body" id="helpBody">
+      <div class="help-toc">
+        <a data-go="hStart">Getting started</a>
+        <a data-go="hTimeline">Timeline</a>
+        <a data-go="hTrim">Trim &amp; split</a>
+        <a data-go="hTrans">Transitions &amp; fades</a>
+        <a data-go="hKf">Zoom / pan</a>
+        <a data-go="hSpeed">Speed</a>
+        <a data-go="hText">Text &amp; color</a>
+        <a data-go="hExport">Export</a>
+        <a data-go="hSave">Save</a>
+        <a data-go="hKeys">Shortcuts</a>
+      </div>
+
+      <section class="help-sec" id="hStart">
+        <h2><span class="ico">🎬</span> Getting started</h2>
+        <p class="lead">Clip is a fully local video editor — your footage never leaves your machine. Nothing uploads, nothing is tracked.</p>
+        <ul>
+          <li>Click <b>＋ Add video</b> (or drag video files onto the window) to drop clips on the timeline.</li>
+          <li>The first video sets the project <b>resolution</b> (shown top-right). Everything composites to that frame.</li>
+          <li>Press <span class="key">Space</span> to play / pause. Drag the <b>scrubber</b> under the preview, or click anywhere on the timeline ruler, to move the playhead.</li>
+          <li>Click a clip to <b>select</b> it — its properties open in the right-hand inspector.</li>
+        </ul>
+      </section>
+
+      <section class="help-sec" id="hTimeline">
+        <h2><span class="ico">🎞️</span> The timeline</h2>
+        <ul>
+          <li><b>Move a clip:</b> drag it left/right. Dragging to the edge <b>auto-scrolls</b> so you can move a clip from the end to the start. On drop, clips reorder and repack with no gaps.</li>
+          <li><b>Zoom:</b> use the <b>Zoom</b> slider (down to 2 px/sec for a project overview) or hit <b>Fit</b> to frame the whole edit.</li>
+          <li><b>Tracks:</b> the upper track holds video / color clips; the thinner track holds text overlays.</li>
+          <li>The orange marker is the <b>playhead</b>. Times are shown as <code>m:ss.cc</code>.</li>
+        </ul>
+      </section>
+
+      <section class="help-sec" id="hTrim">
+        <h2><span class="ico">✂️</span> Trim &amp; split</h2>
+        <ul>
+          <li><b>Trim:</b> drag a clip's left or right <b>edge</b>. The opposite edge stays anchored — dragging the left edge trims from the start (and may leave a leading gap you can drag the clip back into).</li>
+          <li>Or set exact <b>In / Out</b> points (source seconds) in the inspector.</li>
+          <li><b>Split:</b> park the playhead inside a clip and press <span class="key">S</span> (or <b>Split at playhead</b>). Both halves keep their footage.</li>
+          <li><b>Delete:</b> select a clip and press <span class="key">Del</span> or click <b>Delete</b>.</li>
+          <li>The <b>Cut ✂</b> tool lets you click a clip to split it right where you click.</li>
+        </ul>
+      </section>
+
+      <section class="help-sec" id="hTrans">
+        <h2><span class="ico">🌗</span> Transitions &amp; fades</h2>
+        <ul>
+          <li><b>Transitions</b> (inspector → <i>Transition from previous clip</i>): <b>Crossfade</b> dissolves into the previous clip, <b>Dip to black</b> fades through black. The chosen <b>Duration</b> is how far this clip overlaps the previous one.</li>
+          <li><b>Fades</b>: set <b>Fade in</b> / <b>Fade out</b> (in timeline seconds) to fade a single clip from/to black. Fades show as dark gradients on the clip.</li>
+        </ul>
+      </section>
+
+      <section class="help-sec" id="hKf">
+        <h2><span class="ico">🔍</span> Zoom / pan keyframes (the Ken Burns effect)</h2>
+        <p class="lead">Animate a punch-in or a slow drift across the frame.</p>
+        <ul>
+          <li>Move the playhead inside a clip, set <b>Scale</b> and <b>Pan&nbsp;X/Y</b>, then click <b>◆ Add keyframe at playhead</b>.</li>
+          <li>Add <b>two or more</b> keyframes and Clip smoothly animates between them. One keyframe = a static crop.</li>
+          <li>Keyframe diamonds sit on the clip — <b>drag them</b> to retime, even <b>across clip boundaries</b> (the framing transfers to the new clip). <b>⧉</b> duplicates one.</li>
+          <li>Park the playhead on a keyframe and the sliders edit <b>that</b> keyframe live.</li>
+        </ul>
+      </section>
+
+      <section class="help-sec" id="hSpeed">
+        <h2><span class="ico">⏩</span> Speed</h2>
+        <ul>
+          <li>The <b>Playback rate</b> slider runs <b>0.1× → 16×</b> on a log scale (1× ≈ centre); type an exact value in the box for anything in between.</li>
+          <li>Below 1× is <b>slow motion</b> (the clip gets longer); above 1× is fast-forward. Keyframes stay pinned to the same footage frames when you change speed.</li>
+        </ul>
+      </section>
+
+      <section class="help-sec" id="hText">
+        <h2><span class="ico">🅰️</span> Text &amp; color cards</h2>
+        <ul>
+          <li><b>＋ Text</b> adds a title overlay at the playhead. <b>Drag it on the preview</b> to position; set font, size, color, alignment, bold and an optional backdrop box in the inspector.</li>
+          <li>Drag the text's bar on its track to retime, or drag its edges to change duration. Text can extend <b>past the last clip</b> for a title-on-black card.</li>
+          <li><b>＋ Color</b> adds a solid-color clip — perfect for intro / outro cards. It takes transitions and text just like a video clip.</li>
+        </ul>
+      </section>
+
+      <section class="help-sec" id="hExport">
+        <h2><span class="ico">📤</span> Export</h2>
+        <ul>
+          <li><b>Export MP4</b> renders frame-by-frame to H.264 + AAC audio (falls back to WebM if your browser lacks WebCodecs). This is frame-accurate, not a screen recording.</li>
+          <li><b>GIF</b> exports a looping, downscaled animated GIF — handy for short shareable loops.</li>
+          <li>Export runs entirely in your browser; a progress dialog shows status and lets you cancel.</li>
+        </ul>
+      </section>
+
+      <section class="help-sec" id="hSave">
+        <h2><span class="ico">💾</span> Save &amp; open</h2>
+        <ul>
+          <li><b>💾 Save</b> (<span class="key">Ctrl/⌘+S</span>) stores the project — video bytes and all — in your browser's IndexedDB. <b>📂 Open</b> lists saved projects.</li>
+          <li>Edits <b>autosave</b> as you work; on next launch Clip offers to restore the last session.</li>
+          <li>Storage is <b>per browser, per machine</b> — clearing site data wipes saved projects, so keep your source files.</li>
+        </ul>
+      </section>
+
+      <section class="help-sec" id="hKeys">
+        <h2><span class="ico">⌨️</span> Keyboard shortcuts</h2>
+        <div class="help-grid">
+          <div class="help-kb"><span>Play / pause</span><span class="key">Space</span></div>
+          <div class="help-kb"><span>Split at playhead</span><span class="key">S</span></div>
+          <div class="help-kb"><span>Delete selected</span><span class="key">Del</span></div>
+          <div class="help-kb"><span>Step 1 frame</span><span class="key">← / →</span></div>
+          <div class="help-kb"><span>Step 1 second</span><span class="key">Shift + ← / →</span></div>
+          <div class="help-kb"><span>Jump to start / end</span><span class="key">Home / End</span></div>
+          <div class="help-kb"><span>Undo</span><span class="key">Ctrl/⌘ + Z</span></div>
+          <div class="help-kb"><span>Redo</span><span class="key">Ctrl/⌘ + Shift + Z</span></div>
+          <div class="help-kb"><span>Save project</span><span class="key">Ctrl/⌘ + S</span></div>
+          <div class="help-kb"><span>Close this help</span><span class="key">Esc</span></div>
+        </div>
+      </section>
+    </div>
+    <div class="help-foot"><span class="mark" style="color:var(--acc)">◢</span> <b>Clip</b> — runs 100% in your browser. No uploads, no account, no tracking.</div>
+  </div>
+</div>
+
+<style>
+  #projList .pj{display:flex;align-items:center;gap:8px;background:var(--panel2);border:1px solid var(--line);
+    border-radius:8px;padding:9px 11px;cursor:pointer}
+  #projList .pj:hover{border-color:var(--acc)}
+  #projList .pj .nm{flex:1;font-weight:600}
+  #projList .pj .meta{color:var(--mut);font-size:11px}
+  #projList .pj button{padding:3px 8px;font-size:11px}
+  #projList .none{color:var(--mut);font-style:italic;padding:14px;text-align:center}
+</style>
+
+<script>
+/* ============================================================================
+   Clip — a single-file video editor.  State → render-loop → timeline DOM.
+   Preview uses a master clock + native <video> playback for smooth audio.
+   Export is deterministic: seek per frame → WebCodecs VideoEncoder → MP4.
+   ============================================================================ */
+const $ = s => document.querySelector(s);
+const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
+const lerp = (a,b,t)=>a+(b-a)*t;
+const fmt = s => { s=Math.max(0,s); const m=Math.floor(s/60),
+  sec=(s-m*60); return m+':'+sec.toFixed(2).padStart(5,'0'); };
+
+const PREVIEW_W = 1280, PREVIEW_H = 720;          // preview canvas (display)
+const cv = $('#preview'); cv.width=PREVIEW_W; cv.height=PREVIEW_H;
+const ctx = cv.getContext('2d');
+
+/* ---- project state -------------------------------------------------------- */
+const State = {
+  clips: [],            // ordered timeline clips
+  texts: [],            // text overlays (titles), drawn on top of the video
+  selId: null,          // selected clip id
+  selText: null,        // selected text-overlay id
+  playhead: 0,          // timeline seconds
+  playing: false,
+  pps: 80,              // pixels per second (timeline zoom)
+  tool: 'select',       // 'select' | 'cut'
+  outW: PREVIEW_W, outH: PREVIEW_H,
+};
+let _id = 1; const uid = ()=>'c'+(_id++);
+const clipVideos = new Map();         // clip.id -> {video,url}; keeps footage reachable for undo/redo
+
+/* text overlay shape:
+   { id, content, start, end, x, y (normalized centre 0..1), size (frac of height),
+     color, font, weight, align, bg (bool), fadeIn, fadeOut } */
+const getSelText = () => State.texts.find(o=>o.id===State.selText)||null;
+
+/* clip shape:
+   { id, name, url, video, srcDur, inPt, outPt, start, speed, fadeIn, fadeOut,
+     keyframes:[{t, scale, x, y}]  (t = clip-local timeline secs), thumbs:[urls] }  */
+
+const tlDur = c => (c.outPt - c.inPt) / c.speed;       // duration on timeline
+const clipEnd = c => c.start + tlDur(c);
+const projDur = () => Math.max(
+  State.clips.reduce((m,c)=>Math.max(m,clipEnd(c)),0),
+  State.texts.reduce((m,o)=>Math.max(m,o.end),0));  // titles can extend past the last clip (intro/outro cards)
+const sortClips = () => State.clips.sort((a,b)=>a.start-b.start);
+const getSel = () => State.clips.find(c=>c.id===State.selId)||null;
+const clipAt = t => { // last clip covering t
+  let r=null; for(const c of State.clips){ if(t>=c.start-1e-6 && t<clipEnd(c)-1e-6) r=c; } return r; };
+const clipsAt = t => // all clips covering t (1, or 2 during a transition overlap)
+  State.clips.filter(c=> t>=c.start-1e-6 && t<clipEnd(c)-1e-6).sort((a,b)=>a.start-b.start);
+// how much clip c overlaps the clip before it (its transition window), 0 if no transition
+function transOverlap(c, prev){
+  if(!prev || !c.transType || c.transType==='none' || !(c.transDur>0)) return 0;
+  return Math.min(c.transDur, tlDur(c)*0.9, tlDur(prev)*0.9);
+}
+// timeline t -> source time inside clip
+const srcTimeAt = (c,t) => c.inPt + (t - c.start) * c.speed;
+
+/* ---- adding media --------------------------------------------------------- */
+$('#addBtn').onclick = ()=>$('#fileInput').click();
+$('#fileInput').onchange = e => { [...e.target.files].forEach(addFile); e.target.value=''; };
+
+// attach the listener that keeps the canvas honest: seeking a <video> is async,
+// so when we're paused (scrubbing / keyframing) we must redraw once the frame lands.
+function wireRedraw(v){
+  v.addEventListener('seeked', ()=>{ if(!State.playing) drawFrame(); });
+}
+
+function addFile(file){
+  const url = URL.createObjectURL(file);
+  const blobId = (crypto.randomUUID ? crypto.randomUUID() : 'b'+Date.now()+Math.round(Math.random()*1e6));
+  idbPut('blobs', blobId, file).catch(()=>{}); // stash bytes so projects can be reloaded
+  const v = document.createElement('video');
+  v.src=url; v.preload='auto'; v.muted=false; v.crossOrigin='anonymous';
+  wireRedraw(v);
+  v.addEventListener('loadedmetadata', ()=>{
+    const start = projDur();        // append to end of timeline
+    const c = { id:uid(), name:file.name, url, video:v, blobId,
+      srcDur:v.duration, inPt:0, outPt:v.duration, start,
+      speed:1, fadeIn:0, fadeOut:0, keyframes:[], thumbs:[],
+      transType:'none', transDur:0.5 };  // transition from the PREVIOUS clip
+    clipVideos.set(c.id,{video:v,url});  // keep footage reachable for undo/redo
+    if(!State.clips.some(x=>x.video)){ // adopt the first *video* clip's resolution for output
+      State.outW = v.videoWidth||PREVIEW_W; State.outH = v.videoHeight||PREVIEW_H;
+      $('#resHint').textContent = State.outW+'×'+State.outH;
+    }
+    State.clips.push(c); sortClips(); select(c.id);
+    toast('Added '+file.name);
+    renderTimeline(); makeThumbs(c); markDirty();
+  }, {once:true});
+  v.addEventListener('error', ()=>toast('Could not load '+file.name+' ('+(v.error&&v.error.message||'')+')', true));
+}
+
+/* generate filmstrip thumbnails for a clip (offscreen seeking) */
+async function makeThumbs(c){
+  const tv = document.createElement('video'); tv.src=c.url; tv.muted=true;
+  await once(tv,'loadedmetadata');
+  const N=8, tc=document.createElement('canvas'); tc.width=96; tc.height=54;
+  const tg=tc.getContext('2d');
+  for(let i=0;i<N;i++){
+    const t = c.srcDur*(i+0.5)/N;
+    try{ tv.currentTime=t; await once(tv,'seeked'); }catch(e){ break; }
+    tg.drawImage(tv,0,0,tc.width,tc.height);
+    c.thumbs.push(tc.toDataURL('image/jpeg',0.6));
+  }
+  renderTimeline();
+}
+const once = (el,ev)=>new Promise((res,rej)=>{
+  const ok=()=>{cleanup();res();}, no=()=>{cleanup();rej(new Error(ev+' failed'));};
+  const cleanup=()=>{el.removeEventListener(ev,ok);el.removeEventListener('error',no);};
+  el.addEventListener(ev,ok,{once:true}); el.addEventListener('error',no,{once:true});
+});
+
+/* ---- selection / inspector ----------------------------------------------- */
+function select(id){ State.selId=id; State.selText=null; renderTimeline(); syncInspector(); }
+function selectText(id){ State.selText=id; State.selId=null; renderTimeline(); syncInspector(); }
+
+function syncInspector(){
+  const c=getSel(), o=getSelText();
+  $('#inspEmpty').classList.toggle('hidden', !!c||!!o);
+  $('#inspBody').classList.toggle('hidden', !c);
+  $('#textBody').classList.toggle('hidden', !o);
+  if(o){ syncTextInspector(o); return; }
+  if(!c) return;
+  const isColor = c.kind==='color';
+  $('#colorSec').classList.toggle('hidden', !isColor);
+  $('#speedSec').classList.toggle('hidden', isColor);
+  $('#trimSec').classList.toggle('hidden', isColor);
+  $('#kfSec').classList.toggle('hidden', isColor);
+  $('#cDurRow').classList.toggle('hidden', isColor);
+  if(isColor){ $('#clipColor').value=c.color||'#1e2030'; $('#clipDur').value=+tlDur(c).toFixed(2); }
+  $('#cName').textContent=c.name;
+  $('#cDur').textContent=fmt(c.srcDur);
+  $('#cTLDur').textContent=fmt(tlDur(c));
+  $('#speed').value=speedToPos(c.speed); $('#speedNum').value=+c.speed.toFixed(3);
+  // transition (only meaningful if there's a previous clip)
+  const idx=State.clips.indexOf(c), hasPrev=idx>0;
+  $('#transType').value=c.transType||'none'; $('#transDur').value=c.transDur??0.5;
+  $('#transType').disabled=!hasPrev; $('#transDur').disabled=!hasPrev||(c.transType||'none')==='none';
+  $('#transHint').textContent = hasPrev
+    ? 'Overlaps this clip with the previous one to blend them.'
+    : 'First clip — no previous clip to transition from.';
+  $('#fadeIn').value=c.fadeIn; $('#fadeOut').value=c.fadeOut;
+  $('#inPt').value=c.inPt.toFixed(2); $('#outPt').value=c.outPt.toFixed(2);
+  $('#inPt').max=c.srcDur; $('#outPt').max=c.srcDur;
+  // reflect zoom/pan from current playhead state (interpolated)
+  const local = State.playhead - c.start;
+  const kf = sampleKf(c, clamp(local,0,tlDur(c)));
+  $('#scale').value=kf.scale; $('#scaleVal').textContent=kf.scale.toFixed(2)+'×';
+  $('#panx').value=Math.round(kf.x*100); $('#panxVal').textContent=Math.round(kf.x*100)+'%';
+  $('#pany').value=Math.round(kf.y*100); $('#panyVal').textContent=Math.round(kf.y*100)+'%';
+  renderKfList(c);
+}
+
+/* ---- text overlays: create + inspector ------------------------------------ */
+$('#addColorBtn').onclick=()=>addColorClip();
+function addColorClip(){
+  const start=projDur();           // append to the end of the timeline
+  const c={ id:uid(), kind:'color', name:'Color', color:'#1e2030',
+    srcDur:3600, inPt:0, outPt:3, start, speed:1, fadeIn:0, fadeOut:0,
+    keyframes:[], thumbs:[], transType:'none', transDur:0.5 };
+  State.clips.push(c); sortClips(); select(c.id); markDirty();
+  if($('#resHint').textContent==='no media') $('#resHint').textContent=State.outW+'×'+State.outH;
+  renderTimeline(); drawFrame();
+  toast('Color clip added — pick its colour & duration in the panel');
+}
+$('#addTextBtn').onclick=()=>addText();
+function addText(){
+  const start=State.playhead, end=Math.min(start+3, Math.max(start+3, projDur()||start+3));
+  const o={ id:uid(), content:'Your text', start, end:start+3, x:0.5, y:0.5,
+    size:8, color:'#ffffff', font:'system-ui, sans-serif', weight:'bold', align:'center',
+    bg:false, fadeIn:0.2, fadeOut:0.2 };
+  State.texts.push(o); selectText(o.id); markDirty();
+  toast('Text added — type your text, drag it on the preview');
+}
+function syncTextInspector(o){
+  $('#txtContent').value=o.content;
+  $('#txtSize').value=o.size; $('#txtSizeVal').textContent=o.size+'%';
+  $('#txtColor').value=o.color; $('#txtFont').value=o.font;
+  $('#txtBold').checked=o.weight==='bold'; $('#txtBg').checked=!!o.bg;
+  $('#txtAlignL').classList.toggle('on',o.align==='left');
+  $('#txtAlignC').classList.toggle('on',o.align==='center');
+  $('#txtAlignR').classList.toggle('on',o.align==='right');
+  $('#txtStart').value=+o.start.toFixed(2); $('#txtEnd').value=+o.end.toFixed(2);
+  $('#txtFadeIn').value=o.fadeIn; $('#txtFadeOut').value=o.fadeOut;
+}
+function editText(fn){ const o=getSelText(); if(!o)return; fn(o); markDirty(); renderTimeline(); drawFrame(); }
+$('#txtContent').oninput=e=>editText(o=>o.content=e.target.value);
+$('#txtSize').oninput=e=>{ $('#txtSizeVal').textContent=e.target.value+'%'; editText(o=>o.size=+e.target.value); };
+$('#txtColor').oninput=e=>editText(o=>o.color=e.target.value);
+$('#txtFont').onchange=e=>editText(o=>o.font=e.target.value);
+$('#txtBold').onchange=e=>editText(o=>o.weight=e.target.checked?'bold':'normal');
+$('#txtBg').onchange=e=>editText(o=>o.bg=e.target.checked);
+const setAlign=a=>{ editText(o=>o.align=a); ['L','C','R'].forEach(k=>$('#txtAlign'+k).classList.toggle('on',
+  k===(a==='left'?'L':a==='right'?'R':'C'))); };
+$('#txtAlignL').onclick=()=>setAlign('left'); $('#txtAlignC').onclick=()=>setAlign('center'); $('#txtAlignR').onclick=()=>setAlign('right');
+$('#txtStart').onchange=e=>editText(o=>{ o.start=Math.max(0,+e.target.value||0); if(o.end<o.start+0.2)o.end=o.start+0.2; }) || syncInspector();
+$('#txtEnd').onchange=e=>editText(o=>{ o.end=Math.max(o.start+0.2,+e.target.value||0); }) || syncInspector();
+$('#txtFadeIn').onchange=e=>editText(o=>o.fadeIn=Math.max(0,+e.target.value||0));
+$('#txtFadeOut').onchange=e=>editText(o=>o.fadeOut=Math.max(0,+e.target.value||0));
+$('#txtDel').onclick=()=>{ const o=getSelText(); if(!o)return;
+  State.texts=State.texts.filter(x=>x.id!==o.id); State.selText=null; markDirty();
+  renderTimeline(); syncInspector(); drawFrame(); toast('Text deleted'); };
+
+// logarithmic speed slider: position 0..1000 ↔ speed 0.1×..16× (1× lands near centre)
+const SPD_MIN=0.1, SPD_MAX=16, SPD_RATIO=SPD_MAX/SPD_MIN;
+const posToSpeed=p=>SPD_MIN*Math.pow(SPD_RATIO, clamp(p,0,1000)/1000);
+const speedToPos=s=>Math.round(1000*Math.log(clamp(s,SPD_MIN,SPD_MAX)/SPD_MIN)/Math.log(SPD_RATIO));
+function setSpeed(v){ const c=getSel(); if(!c)return;
+  const old=c.speed||1;
+  c.speed=clamp(+v||1, SPD_MIN, SPD_MAX);
+  // Keyframe t is clip-local TIMELINE seconds, but a keyframe should stay pinned to the
+  // same moment in the FOOTAGE. Footage time = inPt + t*speed, so rescale t by old/new
+  // to hold that constant (this also preserves each keyframe's position within the clip).
+  if(old!==c.speed){ const r=old/c.speed; c.keyframes.forEach(k=>k.t*=r); }
+  $('#speed').value=speedToPos(c.speed); $('#speedNum').value=+c.speed.toFixed(3);
+  reflow(); syncInspector(); }
+$('#speed').oninput=e=>setSpeed(posToSpeed(+e.target.value));   // slider position → log speed
+$('#speedNum').onchange=e=>setSpeed(e.target.value);           // commit on blur/Enter — no mid-typing reset
+$('#fadeIn').oninput=e=>{ const c=getSel(); if(!c)return; c.fadeIn=Math.max(0,+e.target.value||0); renderTimeline(); drawFrame(); markDirty(); };
+$('#fadeOut').oninput=e=>{ const c=getSel(); if(!c)return; c.fadeOut=Math.max(0,+e.target.value||0); renderTimeline(); drawFrame(); markDirty(); };
+$('#clipColor').oninput=e=>{ const c=getSel(); if(!c)return; c.color=e.target.value; renderTimeline(); drawFrame(); markDirty(); };
+$('#clipDur').onchange=e=>{ const c=getSel(); if(!c||c.kind!=='color')return;
+  c.outPt=c.inPt+Math.max(0.2,+e.target.value||3)*c.speed;   // duration → outPt (speed is 1 for color)
+  reflow(); syncInspector(); markDirty(); };
+$('#transType').onchange=e=>{ const c=getSel(); if(!c)return; c.transType=e.target.value;
+  reflow(); syncInspector(); markDirty(); };
+$('#transDur').onchange=e=>{ const c=getSel(); if(!c)return; c.transDur=Math.max(0.1,+e.target.value||0.5);
+  reflow(); syncInspector(); markDirty(); };
+$('#inPt').onchange=e=>{ const c=getSel(); if(!c)return;
+  c.inPt=clamp(+e.target.value||0,0,c.outPt-0.05); reflow(); syncInspector(); };
+$('#outPt').onchange=e=>{ const c=getSel(); if(!c)return;
+  c.outPt=clamp(+e.target.value||0,c.inPt+0.05,c.srcDur); reflow(); syncInspector(); };
+
+/* zoom/pan sliders.  If the playhead is sitting ON a keyframe, the sliders edit
+   THAT keyframe live (auto-saved). Otherwise they're a preview you commit with Add. */
+let liveKf=null;
+const KF_SNAP=0.08;                               // timeline-seconds tolerance for "on a keyframe"
+function kfAtPlayhead(c){
+  const local=clamp(State.playhead-c.start,0,tlDur(c));
+  return c.keyframes.find(k=>Math.abs(k.t-local)<KF_SNAP)||null;
+}
+function previewKf(){ const c=getSel(); if(!c)return;
+  const vals={ scale:+$('#scale').value, x:+$('#panx').value/100, y:+$('#pany').value/100 };
+  $('#scaleVal').textContent=vals.scale.toFixed(2)+'×';
+  $('#panxVal').textContent=$('#panx').value+'%';
+  $('#panyVal').textContent=$('#pany').value+'%';
+  const onKf=kfAtPlayhead(c);
+  if(onKf){ onKf.scale=vals.scale; onKf.x=vals.x; onKf.y=vals.y; markDirty(); renderKfList(c); }
+  liveKf=vals;                                    // exact visual feedback while paused
+  drawFrame();
+}
+$('#scale').oninput=previewKf; $('#panx').oninput=previewKf; $('#pany').oninput=previewKf;
+// refresh the timeline marker tooltips once editing settles
+['scale','panx','pany'].forEach(id=>$('#'+id).addEventListener('change',()=>{ const c=getSel(); if(c&&kfAtPlayhead(c)) renderTimeline(); }));
+
+$('#addKf').onclick=()=>{ const c=getSel(); if(!c)return;
+  let local = State.playhead - c.start;
+  if(local<-1e-6||local>tlDur(c)+1e-6){ toast('Move the playhead inside this clip first',true); return; }
+  local=clamp(local,0,tlDur(c));
+  const kf={ t:local, scale:+$('#scale').value, x:+$('#panx').value/100, y:+$('#pany').value/100 };
+  // replace if a keyframe already sits at ~same time
+  const ex=c.keyframes.find(k=>Math.abs(k.t-local)<0.04);
+  if(ex){ Object.assign(ex,kf); } else c.keyframes.push(kf);
+  c.keyframes.sort((a,b)=>a.t-b.t); liveKf=null;
+  renderKfList(c); renderTimeline(); drawFrame(); markDirty();
+  toast('Keyframe set @ '+fmt(local));
+};
+
+function renderKfList(c){
+  const box=$('#kfList'); box.innerHTML='';
+  if(!c.keyframes.length){ box.innerHTML='<div class="hint">No keyframes — clip shows at scale 1.</div>'; return; }
+  const local=clamp(State.playhead-c.start,0,tlDur(c));
+  c.keyframes.forEach((k,i)=>{
+    const d=document.createElement('div'); d.className='kf-item'+(Math.abs(k.t-local)<KF_SNAP?' active':'');
+    d.innerHTML=`<span class="t">${fmt(k.t)}</span>
+      <span style="flex:1">${k.scale.toFixed(2)}× · ${Math.round(k.x*100)},${Math.round(k.y*100)}</span>`;
+    const go=document.createElement('button'); go.textContent='↦'; go.title='Jump here';
+    go.onclick=()=>{ seek(c.start+k.t); };
+    const dup=document.createElement('button'); dup.textContent='⧉'; dup.title='Duplicate (same zoom/pan, then drag it)';
+    dup.onclick=()=>{ duplicateKf(c,k); };
+    const rm=document.createElement('button'); rm.textContent='✕'; rm.title='Delete';
+    rm.onclick=()=>{ c.keyframes.splice(i,1); markDirty(); renderKfList(c); renderTimeline(); drawFrame(); };
+    d.append(go,dup,rm); box.appendChild(d);
+  });
+}
+
+/* duplicate a keyframe: same scale/pan, dropped just after it (or halfway to the next) */
+function duplicateKf(c,k){
+  const d=tlDur(c);
+  const next=c.keyframes.filter(x=>x.t>k.t).sort((a,b)=>a.t-b.t)[0];
+  let nt = next ? (k.t + next.t)/2 : Math.min(k.t+0.5, d);   // halfway to next, else +0.5s
+  if(Math.abs(nt-k.t)<0.04) nt=Math.min(k.t+0.1,d);          // avoid landing on top of it
+  const copy={ t:nt, scale:k.scale, x:k.x, y:k.y };
+  c.keyframes.push(copy); c.keyframes.sort((a,b)=>a.t-b.t);
+  markDirty(); seek(c.start+nt);                              // jump there so you see it
+  renderTimeline(); syncInspector(); drawFrame();
+  toast('Duplicated keyframe @ '+fmt(nt)+' — drag it where you want');
+}
+
+/* sample keyframes at clip-local time -> {scale,x,y} */
+function sampleKf(c, local){
+  const ks=c.keyframes;
+  if(!ks.length) return {scale:1,x:0.5,y:0.5};
+  if(ks.length===1||local<=ks[0].t) return {scale:ks[0].scale,x:ks[0].x,y:ks[0].y};
+  if(local>=ks[ks.length-1].t){ const k=ks[ks.length-1]; return {scale:k.scale,x:k.x,y:k.y}; }
+  for(let i=0;i<ks.length-1;i++){
+    const a=ks[i],b=ks[i+1];
+    if(local>=a.t && local<=b.t){
+      const t=(local-a.t)/Math.max(1e-6,(b.t-a.t)), e=t*t*(3-2*t); // smoothstep
+      return {scale:lerp(a.scale,b.scale,e),x:lerp(a.x,b.x,e),y:lerp(a.y,b.y,e)};
+    }
+  }
+  return {scale:1,x:0.5,y:0.5};
+}
+
+/* a keyframe -> the actual CLAMPED source rectangle it shows, in source pixels.
+   (this is the framing you really see — pan is limited by zoom near the edges) */
+function kfRect(kf, vw, vh){
+  const sw=vw/kf.scale, sh=vh/kf.scale;
+  const sx=clamp(kf.x*vw-sw/2,0,vw-sw), sy=clamp(kf.y*vh-sh/2,0,vh-sh);
+  return {sx,sy,sw,sh};
+}
+/* sample the visible source rect at clip-local time. We interpolate the two
+   neighbouring keyframes' *clamped* framings (centre travels a straight line,
+   zoom keeps its original timing) so the move is a clean A->B with no swoop. */
+function sampleRect(c, local, vw, vh){
+  const ks=c.keyframes;
+  if(!ks.length) return kfRect({scale:1,x:0.5,y:0.5},vw,vh);
+  if(ks.length===1||local<=ks[0].t) return kfRect(ks[0],vw,vh);
+  if(local>=ks[ks.length-1].t) return kfRect(ks[ks.length-1],vw,vh);
+  for(let i=0;i<ks.length-1;i++){
+    const a=ks[i],b=ks[i+1];
+    if(local>=a.t && local<=b.t){
+      const t=(local-a.t)/Math.max(1e-6,(b.t-a.t)), e=t*t*(3-2*t); // smoothstep
+      const sc=lerp(a.scale,b.scale,e), sw=vw/sc, sh=vh/sc;        // same zoom curve as before
+      const ra=kfRect(a,vw,vh), rb=kfRect(b,vw,vh);                // straight-line centre between real framings
+      const cx=lerp(ra.sx+ra.sw/2, rb.sx+rb.sw/2, e);
+      const cy=lerp(ra.sy+ra.sh/2, rb.sy+rb.sh/2, e);
+      return {sx:clamp(cx-sw/2,0,vw-sw), sy:clamp(cy-sh/2,0,vh-sh), sw, sh};
+    }
+  }
+  return kfRect(ks[ks.length-1],vw,vh);
+}
+
+/* pack clips end-to-end; a clip with a transition overlaps the previous one by its
+   transition duration (that overlap is where the crossfade/dip happens). */
+function reflow(){
+  sortClips();
+  let cursor=0, prev=null;
+  for(const c of State.clips){
+    const ov=transOverlap(c, prev);
+    c.start=Math.max(0, cursor-ov);
+    cursor=c.start+tlDur(c); prev=c;
+    const d=tlDur(c); c.keyframes.forEach(k=>k.t=clamp(k.t,0,d));   // clamp keyframes to new tl duration
+  }
+  renderTimeline(); updateTimeUI(); drawFrame();
+}
+
+/* ---- split / delete ------------------------------------------------------- */
+$('#splitBtn').onclick=()=>splitAtPlayhead();
+$('#delBtn').onclick=()=>deleteSel();
+
+function splitAtPlayhead(){
+  const c=clipAt(State.playhead); if(!c){ toast('Playhead is not over a clip',true); return; }
+  const local=State.playhead-c.start; if(local<0.05||local>tlDur(c)-0.05){ toast('Too close to clip edge to split',true); return; }
+  const srcSplit=srcTimeAt(c,State.playhead);
+  const right={ ...c, id:uid(), video:c.kind==='color'?undefined:cloneVideo(c), inPt:srcSplit, outPt:c.outPt,
+    transType:'none', transDur:0.5,                 // a fresh cut between the halves, no transition
+    keyframes:c.keyframes.filter(k=>k.t>=local).map(k=>({...k,t:k.t-local})), thumbs:c.thumbs.slice() };
+  c.outPt=srcSplit;
+  c.keyframes=c.keyframes.filter(k=>k.t<=local);
+  if(right.video) clipVideos.set(right.id,{video:right.video,url:right.url});
+  State.clips.push(right); reflow(); select(c.id);
+  toast('Split into 2 clips');
+}
+function cloneVideo(c){ const v=document.createElement('video'); v.src=c.url; v.preload='auto'; v.crossOrigin='anonymous'; wireRedraw(v); return v; }
+
+function deleteSel(){
+  const c=getSel(); if(!c){ toast('No clip selected',true); return; }
+  State.clips=State.clips.filter(x=>x.id!==c.id);
+  State.selId=null; reflow(); syncInspector();
+  toast('Deleted clip');
+}
+
+/* tool toggle */
+$('#tSelect').onclick=()=>setTool('select');
+$('#tCut').onclick=()=>setTool('cut');
+function setTool(t){ State.tool=t; $('#tSelect').classList.toggle('on',t==='select');
+  $('#tCut').classList.toggle('on',t==='cut');
+  $('#tlScroll').style.cursor = t==='cut'?'crosshair':''; }
+
+/* ---- timeline rendering --------------------------------------------------- */
+const tlInner=$('#tlInner'), tracks=$('#track0'), ruler=$('#ruler'), playheadEl=$('#playhead');
+$('#tlZoom').oninput=e=>{ State.pps=+e.target.value; $('#ppsVal').textContent=State.pps; renderTimeline(); };
+function setZoom(pps){ State.pps=clamp(pps,2,400); $('#tlZoom').value=State.pps;
+  $('#ppsVal').textContent=Math.round(State.pps*10)/10; renderTimeline(); }
+$('#fitBtn').onclick=()=>{ const dur=Math.max(projDur(),1), w=$('#tlScroll').clientWidth-50;
+  setZoom(w/dur); $('#tlScroll').scrollLeft=0; };
+
+function renderTimeline(){
+  const dur=Math.max(projDur(),10), W=dur*State.pps+40;
+  tlInner.style.width=W+'px';
+  // ruler — pick a "nice" step so labels stay ~70px apart at any zoom
+  ruler.innerHTML=''; ruler.style.width=W+'px';
+  const NICE=[0.5,1,2,5,10,15,30,60,120,300,600];
+  let step=NICE.find(s=>s*State.pps>=70) || 600;
+  for(let t=0;t<=dur+step;t+=step){
+    const d=document.createElement('div'); d.className='tick';
+    d.style.left=(t*State.pps)+'px'; d.textContent=fmt(t).replace(/\.00$/,''); ruler.appendChild(d);
+  }
+  // clips
+  tracks.innerHTML=''; tracks.style.width=W+'px';
+  let prevClip=null;
+  for(const c of State.clips){
+    const el=document.createElement('div'); el.className='clip'+(c.id===State.selId?' sel':'');
+    el.style.left=(c.start*State.pps)+'px'; el.style.width=(tlDur(c)*State.pps)+'px';
+    el.dataset.id=c.id;
+    el.innerHTML=`<div class="label">${c.name} ${c.speed!==1&&c.kind!=='color'?'· '+c.speed.toFixed(2)+'×':''}</div>
+      <div class="thumbs"></div>`;
+    if(c.kind==='color'){ el.style.background=c.color; el.style.borderColor='#0006'; }
+    else { const th=el.querySelector('.thumbs'); c.thumbs.forEach(u=>{const im=new Image();im.src=u;th.appendChild(im);}); }
+    const ov=transOverlap(c, prevClip);
+    if(ov>0){ const tr=document.createElement('div'); tr.className='trans';
+      tr.style.width=(ov*State.pps)+'px';
+      tr.title=(c.transType==='dip'?'Dip to black':'Crossfade')+' · '+ov.toFixed(2)+'s';
+      tr.textContent = c.transType==='dip' ? '◑' : '⤬'; el.appendChild(tr); }
+    prevClip=c;
+    if(c.fadeIn>0){ const f=document.createElement('div'); f.className='fade in';
+      f.style.width=(c.fadeIn*State.pps)+'px'; el.appendChild(f); }
+    if(c.fadeOut>0){ const f=document.createElement('div'); f.className='fade out';
+      f.style.width=(c.fadeOut*State.pps)+'px'; el.appendChild(f); }
+    c.keyframes.forEach(k=>{ const m=document.createElement('div'); m.className='kf';
+      m.style.left=(k.t*State.pps)+'px';
+      m.title=`keyframe @ ${fmt(k.t)} · ${k.scale.toFixed(2)}× · pan ${Math.round(k.x*100)},${Math.round(k.y*100)} — drag to move (across clips too)`;
+      wireKeyframe(m,el,c,k); el.appendChild(m); });
+    const hl=document.createElement('div'); hl.className='handle l';
+    const hr=document.createElement('div'); hr.className='handle r';
+    el.append(hl,hr);
+    tracks.appendChild(el);
+    wireClip(el,c,hl,hr);
+  }
+  // text overlays (second track)
+  const tt=$('#trackText'); tt.innerHTML=''; tt.style.width=W+'px';
+  for(const o of State.texts){
+    const el=document.createElement('div'); el.className='txtbar'+(o.id===State.selText?' sel':'');
+    el.style.left=(o.start*State.pps)+'px'; el.style.width=Math.max(14,(o.end-o.start)*State.pps)+'px';
+    el.textContent=(o.content||'').split('\n')[0]||'(text)'; el.dataset.id=o.id;
+    const hl=document.createElement('div'); hl.className='handle l';
+    const hr=document.createElement('div'); hr.className='handle r';
+    el.append(hl,hr); tt.appendChild(el);
+    wireTextBar(el,o,hl,hr);
+  }
+  positionPlayhead();
+}
+function positionPlayhead(){ playheadEl.style.left=(State.playhead*State.pps)+'px'; }
+
+/* text bar: click to select, drag to move, edge-trim its in/out time */
+function wireTextBar(el,o,hl,hr){
+  el.addEventListener('mousedown',e=>{
+    if(e.target===hl||e.target===hr) return;
+    selectText(o.id);
+    const sx=e.clientX, s0=o.start, dur=o.end-o.start; let moved=false;
+    el.style.cursor='grabbing';
+    const mv=ev=>{ if(Math.abs(ev.clientX-sx)>3)moved=true; edgeScroll($('#tlScroll'),ev.clientX);
+      o.start=Math.max(0,s0+(ev.clientX-sx)/State.pps); o.end=o.start+dur;
+      el.style.left=(o.start*State.pps)+'px'; positionPlayhead(); };
+    const up=()=>{ document.removeEventListener('mousemove',mv); document.removeEventListener('mouseup',up);
+      el.style.cursor='grab'; if(moved){ markDirty(); renderTimeline(); syncInspector(); drawFrame(); } };
+    document.addEventListener('mousemove',mv); document.addEventListener('mouseup',up);
+    e.preventDefault();
+  });
+  const trim=(h,side)=>h.addEventListener('mousedown',e=>{ e.stopPropagation(); selectText(o.id);
+    const sx=e.clientX, s0=o.start, e0=o.end;
+    const mv=ev=>{ const dT=(ev.clientX-sx)/State.pps;
+      if(side==='l') o.start=clamp(s0+dT,0,o.end-0.2); else o.end=Math.max(o.start+0.2,e0+dT);
+      el.style.left=(o.start*State.pps)+'px'; el.style.width=Math.max(14,(o.end-o.start)*State.pps)+'px'; };
+    const up=()=>{ document.removeEventListener('mousemove',mv); document.removeEventListener('mouseup',up);
+      markDirty(); renderTimeline(); syncInspector(); drawFrame(); };
+    document.addEventListener('mousemove',mv); document.addEventListener('mouseup',up); e.preventDefault(); });
+  trim(hl,'l'); trim(hr,'r');
+}
+
+/* drag a keyframe marker along the timeline — it carries its scale/pan, and can
+   cross into another clip, transferring ownership (its time is recomputed in that
+   clip's local frame). Works in global timeline coordinates. */
+function wireKeyframe(m,el,c0,k){
+  m.addEventListener('mousedown',e=>{
+    e.stopPropagation(); e.preventDefault();   // don't move/select the underlying clip
+    let owner=c0; State.selId=owner.id;
+    const mv=ev=>{
+      // global timeline position under the cursor
+      let gt=clamp((ev.clientX - tracks.getBoundingClientRect().left)/State.pps, 0, Math.max(0,projDur()));
+      const target=clipAt(gt)||owner;          // gaps / past-end → stay with current owner
+      if(target!==owner){                      // hand the keyframe off to the new clip
+        const i=owner.keyframes.indexOf(k); if(i>=0) owner.keyframes.splice(i,1);
+        target.keyframes.push(k); owner=target; State.selId=owner.id;
+        const tEl=tracks.querySelector('.clip[data-id="'+owner.id+'"]');
+        if(tEl) tEl.appendChild(m);            // move the marker element into that clip
+      }
+      k.t=clamp(gt-owner.start,0,tlDur(owner));
+      m.style.left=(k.t*State.pps)+'px';
+      // live feedback: playhead follows the keyframe so the preview shows its framing
+      State.playhead=owner.start+k.t; positionPlayhead(); updateTimeUI();
+      try{ owner.video.currentTime=srcTimeAt(owner,State.playhead); }catch(err){} // wireRedraw repaints
+      drawFrame();
+    };
+    const up=()=>{
+      document.removeEventListener('mousemove',mv); document.removeEventListener('mouseup',up);
+      owner.keyframes.sort((a,b)=>a.t-b.t);
+      select(owner.id);                        // full re-render + inspector on the owning clip
+      markDirty(); drawFrame();
+    };
+    document.addEventListener('mousemove',mv); document.addEventListener('mouseup',up);
+  });
+}
+
+/* clip drag (move) + edge trim + click select + cut-tool split */
+function wireClip(el,c,hl,hr){
+  el.addEventListener('mousedown',e=>{
+    if(e.target===hl||e.target===hr) return;        // handled below
+    if(State.tool==='cut'){
+      const t=(e.clientX-tracks.getBoundingClientRect().left)/State.pps;
+      seek(t); splitAtPlayhead(); e.stopPropagation(); return;
+    }
+    select(c.id);
+    const sc=$('#tlScroll');
+    const grab=(e.clientX - tracks.getBoundingClientRect().left) - c.start*State.pps;  // px within clip grabbed
+    let lastX=e.clientX, moved=false, raf=0;
+    el.style.cursor='grabbing';
+    // allow start to go slightly negative while dragging so it can sort AHEAD of a
+    // clip sitting at 0; reflow() then packs everything back from 0 (this is what
+    // lets you drag a clip to the very start and have it become the first clip).
+    const apply=()=>{ const tl=tracks.getBoundingClientRect().left;
+      c.start=((lastX-tl)-grab)/State.pps; el.style.left=(c.start*State.pps)+'px'; };
+    const loop=()=>{ edgeScroll(sc,lastX); apply(); raf=requestAnimationFrame(loop); };
+    const mv=ev=>{ lastX=ev.clientX; if(Math.abs(ev.clientX-e.clientX)>3)moved=true; };
+    const up=()=>{ cancelAnimationFrame(raf);
+      document.removeEventListener('mousemove',mv); document.removeEventListener('mouseup',up);
+      el.style.cursor='grab';
+      if(moved){
+        // reorder: the dragged clip lands before the first OTHER clip whose centre is
+        // past its left edge (so dragging to the far left makes it the first clip).
+        const others=State.clips.filter(x=>x!==c).sort((a,b)=>a.start-b.start);
+        let idx=others.findIndex(o=>(o.start+tlDur(o)/2) > c.start); if(idx<0) idx=others.length;
+        others.splice(idx,0,c); others.forEach((o,i)=>o.start=i*1e6);  // enforce order; reflow repacks
+        State.clips=others; reflow(); select(c.id);
+      } else renderTimeline(); };
+    document.addEventListener('mousemove',mv); document.addEventListener('mouseup',up);
+    raf=requestAnimationFrame(loop); e.preventDefault();
+  });
+  trimHandle(hl,c,'l'); trimHandle(hr,c,'r');
+}
+// auto-scroll a scroll container when the cursor nears its left/right edge (for drags)
+function edgeScroll(sc, clientX){
+  const r=sc.getBoundingClientRect(), edge=50;
+  if(clientX < r.left+edge) sc.scrollLeft -= Math.min(28, r.left+edge-clientX);
+  else if(clientX > r.right-edge) sc.scrollLeft += Math.min(28, clientX-(r.right-edge));
+}
+// when a clip is dragged, re-pack by start order
+function resolveOverlaps(c){ sortClips(); }
+
+function trimHandle(h,c,side){
+  h.addEventListener('mousedown',e=>{
+    e.stopPropagation(); e.preventDefault(); select(c.id);
+    const sx=e.clientX, sIn=c.inPt, sOut=c.outPt, sStart=c.start, sp=c.speed;
+    const origRight=sStart+(sOut-sIn)/sp;                 // timeline pos of the clip's right edge
+    const idx=State.clips.indexOf(c);
+    const prevEnd=idx>0 ? clipEnd(State.clips[idx-1]) : 0; // left edge can't cross the previous clip
+    const mv=ev=>{
+      const dT=(ev.clientX-sx)/State.pps;                 // timeline-seconds dragged
+      if(side==='l'){
+        // LEFT edge follows the cursor; RIGHT edge stays put → visibly trims from the left
+        let start=clamp(sStart+dT, Math.max(0,prevEnd), origRight-0.1);
+        start=Math.max(start, sStart - sIn/sp);            // inPt can't drop below 0
+        c.start=start; c.inPt=sIn+(start-sStart)*sp;
+      } else {
+        // RIGHT edge follows the cursor; LEFT edge stays put
+        c.outPt=clamp(sOut+dT*sp, c.inPt+0.1, c.srcDur);
+      }
+      renderTimeline();
+    };
+    const up=()=>{ document.removeEventListener('mousemove',mv); document.removeEventListener('mouseup',up);
+      finalizeTrim(); syncInspector(); markDirty(); };
+    document.addEventListener('mousemove',mv); document.addEventListener('mouseup',up);
+  });
+}
+
+/* trimming keeps each clip where it sits (gaps allowed) and only prevents overlaps —
+   unlike reflow(), which re-packs to zero and would undo a left-edge trim. */
+function finalizeTrim(){
+  sortClips();
+  for(let i=1;i<State.clips.length;i++){
+    const prev=State.clips[i-1], cur=State.clips[i];
+    const minStart=clipEnd(prev)-transOverlap(cur,prev);    // allow exactly the transition overlap
+    if(cur.start < minStart-1e-6) cur.start=minStart;       // push later clip; gaps otherwise preserved
+  }
+  State.clips.forEach(c=>{ const d=tlDur(c); c.keyframes.forEach(k=>k.t=clamp(k.t,0,d)); });
+  renderTimeline(); updateTimeUI(); drawFrame();
+}
+
+/* click empty timeline / ruler to move playhead */
+$('#tlScroll').addEventListener('mousedown',e=>{
+  if(e.target.closest('.clip')||e.target.closest('.txtbar')) return;
+  const rect=tracks.getBoundingClientRect();
+  const t=(e.clientX-rect.left)/State.pps; seek(Math.max(0,t));
+  const mv=ev=>{ const tt=(ev.clientX-rect.left)/State.pps; seek(Math.max(0,tt)); };
+  const up=()=>{document.removeEventListener('mousemove',mv);document.removeEventListener('mouseup',up);};
+  document.addEventListener('mousemove',mv); document.addEventListener('mouseup',up);
+});
+
+/* drag-and-drop video files onto the timeline */
+const tls=$('#tlScroll');
+['dragenter','dragover'].forEach(ev=>tls.addEventListener(ev,e=>{e.preventDefault();tls.classList.add('drop');}));
+['dragleave','drop'].forEach(ev=>tls.addEventListener(ev,e=>{e.preventDefault();tls.classList.remove('drop');}));
+tls.addEventListener('drop',e=>{ [...e.dataTransfer.files].filter(f=>f.type.startsWith('video')).forEach(addFile); });
+
+/* ---- preview / export compositing ----------------------------------------- */
+// paint one clip's frame onto any 2D context (size cw×ch) with zoom/pan + alpha.
+function paintClip(g, cw, ch, c, v, tlTime, alpha, useLive){
+  if(c.kind==='color'){                              // solid-colour clip (intro/outro card)
+    g.globalAlpha=clamp(alpha,0,1); g.fillStyle=c.color||'#000'; g.fillRect(0,0,cw,ch); g.globalAlpha=1; return;
+  }
+  if(!v || !v.videoWidth) return;
+  const local=clamp(tlTime-c.start,0,tlDur(c));
+  const vw=v.videoWidth, vh=v.videoHeight;
+  // liveKf is the un-committed slider preview — only while paused & editing
+  const useKf = useLive && liveKf && !State.playing && c.id===State.selId;
+  const {sx,sy,sw,sh} = useKf ? kfRect(liveKf,vw,vh) : sampleRect(c, local, vw, vh);
+  const ar=sw/sh, car=cw/ch;                        // letterbox (object-fit: contain)
+  let dw,dh; if(ar>car){ dw=cw; dh=cw/ar; } else { dh=ch; dw=ch*ar; }
+  g.globalAlpha=clamp(alpha,0,1);
+  try{ g.drawImage(v, sx,sy,sw,sh, (cw-dw)/2,(ch-dh)/2, dw,dh); }catch(e){}
+  g.globalAlpha=1;
+}
+function fadeAlpha(c, tlTime){
+  const local=tlTime-c.start, d=tlDur(c); let a=1;
+  if(c.fadeIn>0 && local<c.fadeIn) a=Math.min(a, local/c.fadeIn);
+  if(c.fadeOut>0 && local>d-c.fadeOut) a=Math.min(a,(d-local)/c.fadeOut);
+  return clamp(a,0,1);
+}
+// composite the whole frame at time t: 1 clip, or a 2-clip transition overlap.
+function renderAt(g, cw, ch, t, getVideo, useLive){
+  g.fillStyle='#000'; g.fillRect(0,0,cw,ch);
+  const cs=clipsAt(t);
+  if(!cs.length) return;
+  if(cs.length===1){ const c=cs[0]; paintClip(g,cw,ch,c,getVideo(c),t,fadeAlpha(c,t),useLive); return; }
+  const a=cs[0], b=cs[cs.length-1];                 // a = outgoing (earlier), b = incoming (later)
+  const ovStart=b.start, ovEnd=clipEnd(a);
+  const p=clamp((t-ovStart)/Math.max(1e-6,ovEnd-ovStart),0,1), e=p*p*(3-2*p);
+  if((b.transType||'crossfade')==='dip'){           // dip to black: A→black, then black→B
+    if(p<0.5) paintClip(g,cw,ch,a,getVideo(a),t,fadeAlpha(a,t)*(1-2*p),useLive);
+    else      paintClip(g,cw,ch,b,getVideo(b),t,fadeAlpha(b,t)*(2*p-1),useLive);
+  } else {                                          // crossfade: A stays, B dissolves in over it
+    paintClip(g,cw,ch,a,getVideo(a),t,fadeAlpha(a,t),useLive);
+    paintClip(g,cw,ch,b,getVideo(b),t,fadeAlpha(b,t)*e,useLive);
+  }
+}
+function drawFrame(){ renderAt(ctx, cv.width, cv.height, State.playhead, c=>c.video, true);
+  drawOverlays(ctx, cv.width, cv.height, State.playhead); }
+
+/* ---- text overlays (titles) ----------------------------------------------- */
+function overlayAlpha(o,t){ let a=1; const d=o.end-o.start, local=t-o.start;
+  if(o.fadeIn>0 && local<o.fadeIn) a=Math.min(a, local/o.fadeIn);
+  if(o.fadeOut>0 && local>d-o.fadeOut) a=Math.min(a,(d-local)/o.fadeOut);
+  return clamp(a,0,1); }
+// returns {x,y,w,h} box of the text in canvas px (for hit-testing / drag), or null
+function overlayBox(g, cw, ch, o){
+  const fontPx=Math.max(8,o.size/100*ch), lines=(o.content||'').split('\n'), lineH=fontPx*1.2;
+  g.font=`${o.weight||'bold'} ${fontPx}px ${o.font||'system-ui, sans-serif'}`;
+  let maxW=0; for(const ln of lines) maxW=Math.max(maxW, g.measureText(ln).width);
+  const totalH=lineH*lines.length, cx=o.x*cw, cy=o.y*ch;
+  const bx = o.align==='left'? cx : o.align==='right'? cx-maxW : cx-maxW/2;
+  return {x:bx, y:cy-totalH/2, w:maxW, h:totalH, fontPx, lineH, lines, cx, cy};
+}
+function drawOverlays(g, cw, ch, t){
+  for(const o of State.texts){
+    if(t<o.start-1e-6 || t>=o.end-1e-6) continue;
+    const a=overlayAlpha(o,t); if(a<=0) continue;
+    const b=overlayBox(g,cw,ch,o);
+    g.save(); g.globalAlpha=a; g.textAlign=o.align||'center'; g.textBaseline='middle';
+    if(o.bg){ g.fillStyle='rgba(0,0,0,0.55)'; const px=b.fontPx*0.4, py=b.fontPx*0.25;
+      g.fillRect(b.x-px, b.y-py, b.w+2*px, b.h+2*py); }
+    g.fillStyle=o.color||'#ffffff';
+    g.lineWidth=Math.max(1,b.fontPx*0.07); g.strokeStyle='rgba(0,0,0,0.65)'; g.lineJoin='round';
+    b.lines.forEach((ln,i)=>{ const ly=b.cy - b.h/2 + b.lineH*(i+0.5);
+      if(!o.bg) g.strokeText(ln,o.x*cw,ly);    // outline for legibility when no backdrop
+      g.fillText(ln,o.x*cw,ly); });
+    g.restore();
+  }
+}
+// drag a text overlay around on the preview canvas to position it
+cv.addEventListener('mousedown',e=>{
+  const r=cv.getBoundingClientRect(), sc=cv.width/r.width;
+  const px=(e.clientX-r.left)*sc, py=(e.clientY-r.top)*sc, t=State.playhead;
+  // hit-test active texts (topmost last)
+  let hit=null;
+  for(const o of State.texts){ if(t<o.start-1e-6||t>=o.end-1e-6) continue;
+    const b=overlayBox(ctx,cv.width,cv.height,o);
+    if(px>=b.x-8&&px<=b.x+b.w+8&&py>=b.y-8&&py<=b.y+b.h+8) hit=o; }
+  if(!hit) return;
+  selectText(hit.id);
+  const mv=ev=>{ hit.x=clamp((ev.clientX-r.left)*sc/cv.width,0,1);
+    hit.y=clamp((ev.clientY-r.top)*sc/cv.height,0,1); drawFrame(); };
+  const up=()=>{ document.removeEventListener('mousemove',mv); document.removeEventListener('mouseup',up);
+    markDirty(); };
+  document.addEventListener('mousemove',mv); document.addEventListener('mouseup',up);
+  e.preventDefault();
+});
+
+/* ---- playback ------------------------------------------------------------- */
+let rafId=null, lastWall=0, activeVideo=null;
+$('#playBtn').onclick=()=>State.playing?pause():play();
+$('#stopBtn').onclick=()=>{ pause(); seek(0); };
+$('#scrub').oninput=e=>{ seek(projDur()*(+e.target.value/1000)); };
+
+function play(){
+  if(projDur()<=0) return;
+  if(State.playhead>=projDur()-1e-3) State.playhead=0;
+  State.playing=true; $('#playBtn').textContent='⏸ Pause';
+  liveKf=null;                       // drop any un-committed slider preview
+  lastWall=performance.now();
+  syncActiveVideo(true);
+  rafId=requestAnimationFrame(tick);
+}
+function pause(){
+  State.playing=false; $('#playBtn').textContent='▶ Play';
+  if(rafId) cancelAnimationFrame(rafId); rafId=null;
+  if(activeVideo){ activeVideo.pause(); }
+}
+function seek(t){
+  liveKf=null;                       // moving the playhead ends the slider preview
+  State.playhead=clamp(t,0,Math.max(0,projDur()));
+  positionPlayhead(); updateTimeUI();
+  syncActiveVideo(State.playing); syncOverlap(); drawFrame(); syncInspector();
+  // auto-scroll timeline to keep playhead visible
+  const px=State.playhead*State.pps, sc=$('#tlScroll');
+  if(px<sc.scrollLeft+40||px>sc.scrollLeft+sc.clientWidth-40) sc.scrollLeft=px-sc.clientWidth/2;
+}
+
+// ensure the right <video> is the active one, seeked & playing at clip.speed
+function syncActiveVideo(shouldPlay){
+  const c=clipAt(State.playhead);
+  if(activeVideo && (!c || activeVideo!==c.video)){ activeVideo.pause(); activeVideo=null; }
+  if(!c || !c.video){ return; }                       // color clips have no video to play
+  const src=srcTimeAt(c,State.playhead);
+  if(Math.abs(c.video.currentTime-src)>0.25) { try{c.video.currentTime=src;}catch(e){} }
+  c.video.playbackRate=clamp(c.speed,0.0625,16);
+  activeVideo=c.video;
+  if(shouldPlay) tryPlay(c.video); else c.video.pause();
+}
+// Play with sound. Chrome refuses to play a video that has audio unless it's sure
+// of a user gesture; when it refuses, mute and retry so the preview never freezes.
+// (Export renders audio separately, so a muted preview loses nothing in the output.)
+function tryPlay(v){
+  const p=v.play();
+  if(p&&p.catch) p.catch(()=>{ v.muted=true; const q=v.play(); if(q&&q.catch)q.catch(()=>{}); });
+}
+// during a transition overlap, the non-active (outgoing) clip's video must also show the
+// right frame — seek it to its source time so the crossfade preview blends real footage.
+function syncOverlap(){
+  const cs=clipsAt(State.playhead); if(cs.length<2) return;
+  for(const c of cs){ if(!c.video || c.video===activeVideo) continue;
+    const src=clamp(srcTimeAt(c,State.playhead),0,c.srcDur-1e-3);
+    if(Math.abs(c.video.currentTime-src)>0.05){ try{c.video.currentTime=src;}catch(e){} }
+  }
+}
+
+function tick(now){
+  if(!State.playing) return;
+  const dt=(now-lastWall)/1000; lastWall=now;
+  State.playhead+=dt;
+  if(State.playhead>=projDur()){ State.playhead=projDur(); pause(); positionPlayhead(); updateTimeUI(); drawFrame(); return; }
+  // hand off between clips
+  const c=clipAt(State.playhead);
+  if(!c || !c.video){ if(activeVideo){activeVideo.pause();activeVideo=null;} }  // color clip / gap: nothing to play
+  else if(c.video!==activeVideo) syncActiveVideo(true);
+  else {
+    const src=srcTimeAt(c,State.playhead);
+    if(c.video.paused){
+      // native playback didn't take (e.g. blocked) — drive frames by seeking so the
+      // footage advances with the clock instead of freezing, and keep trying to resume.
+      try{c.video.currentTime=src;}catch(e){} tryPlay(c.video);
+    } else if(Math.abs(c.video.currentTime-src)>0.25){
+      try{c.video.currentTime=src;}catch(e){}   // correct drift, keep footage on the clock
+    }
+  }
+  syncOverlap();                       // keep the outgoing clip's frame current during a transition
+  positionPlayhead(); updateTimeUI(); drawFrame();
+  rafId=requestAnimationFrame(tick);
+}
+function updateTimeUI(){
+  $('#curTime').textContent=fmt(State.playhead);
+  $('#totTime').textContent=fmt(projDur());
+  const d=projDur(); $('#scrub').value = d? Math.round(State.playhead/d*1000):0;
+}
+
+/* ---- keyboard shortcuts --------------------------------------------------- */
+document.addEventListener('keydown',e=>{
+  if(/INPUT|TEXTAREA/.test(e.target.tagName)) return;   // let native undo work in text fields
+  if((e.ctrlKey||e.metaKey) && (e.code==='KeyZ'||e.code==='KeyY')){
+    e.preventDefault();
+    if(e.code==='KeyY' || (e.code==='KeyZ'&&e.shiftKey)) redo(); else undo();
+    return;
+  }
+  if(e.code==='Space'){ e.preventDefault(); State.playing?pause():play(); }
+  else if(e.code==='KeyS'){ splitAtPlayhead(); }
+  else if(e.code==='Delete'||e.code==='Backspace'){ if(getSelText()) $('#txtDel').onclick(); else deleteSel(); }
+  else if(e.code==='ArrowLeft'){ seek(State.playhead-(e.shiftKey?1:1/30)); }
+  else if(e.code==='ArrowRight'){ seek(State.playhead+(e.shiftKey?1:1/30)); }
+  else if(e.code==='Home'){ seek(0); } else if(e.code==='End'){ seek(projDur()); }
+});
+
+/* ---- toast ---------------------------------------------------------------- */
+let toastT=null;
+function toast(msg,err){ let el=$('.toast'); if(!el){el=document.createElement('div');el.className='toast';document.body.appendChild(el);}
+  el.className='toast'+(err?' err':''); el.textContent=msg; el.style.display='block';
+  clearTimeout(toastT); toastT=setTimeout(()=>el.style.display='none',2600); }
+
+/* ============================================================================
+   EXPORT — deterministic seek-per-frame → WebCodecs VideoEncoder → MP4 (+AAC)
+   ============================================================================ */
+const FPS = 30;
+let exportAbort=false;
+$('#modalCancel').onclick=()=>{ exportAbort=true; };
+$('#exportBtn').onclick=()=>exportVideo();
+
+function showModal(title){ $('#modalTitle').textContent=title; $('#modal').classList.remove('hidden'); }
+function hideModal(){ $('#modal').classList.add('hidden'); }
+function prog(p,msg){ $('#modalBar').style.width=clamp(p,0,1)*100+'%'; if(msg)$('#modalMsg').textContent=msg; }
+
+async function exportVideo(){
+  const dur=projDur();
+  if(dur<=0){ toast('Add a clip first',true); return; }
+  if(State.playing) pause();
+  exportAbort=false;
+  if(typeof VideoEncoder==='undefined'){ return exportWebMFallback(); }
+
+  let Muxer, ArrayBufferTarget;
+  try{
+    const m=await import('https://cdn.jsdelivr.net/npm/mp4-muxer@5.0.1/build/mp4-muxer.mjs');
+    Muxer=m.Muxer; ArrayBufferTarget=m.ArrayBufferTarget;
+  }catch(e){ toast('MP4 muxer unavailable (offline?) — using WebM',true); return exportWebMFallback(); }
+
+  showModal('Exporting MP4');
+  prog(0,'Setting up encoder…');
+
+  // output dims = even numbers (codec requirement)
+  const W=State.outW - (State.outW%2), H=State.outH - (State.outH%2);
+  const ec=document.createElement('canvas'); ec.width=W; ec.height=H;
+  const eg=ec.getContext('2d');
+
+  // audio first (so muxer knows about the track); best-effort
+  let audio=null;
+  try{ audio=await renderMixedAudio(dur); }catch(e){ console.warn('audio render failed',e); }
+
+  const muxer=new Muxer({
+    target:new ArrayBufferTarget(),
+    video:{ codec:'avc', width:W, height:H },
+    audio: audio?{ codec:'aac', sampleRate:audio.sampleRate, numberOfChannels:audio.numberOfChannels }:undefined,
+    fastStart:'in-memory',
+  });
+
+  const venc=new VideoEncoder({
+    output:(chunk,meta)=>muxer.addVideoChunk(chunk,meta),
+    error:e=>{ console.error(e); toast('Encoder error: '+e.message,true); }
+  });
+  // pick a supported avc level
+  let cfg={codec:'avc1.640028',width:W,height:H,bitrate:Math.round(W*H*FPS*0.12),framerate:FPS};
+  if(!(await VideoEncoder.isConfigSupported(cfg)).supported) cfg.codec='avc1.42001f';
+  venc.configure(cfg);
+
+  // render every frame deterministically
+  const total=Math.ceil(dur*FPS);
+  // we need to seek each clip's <video>; use fresh elements to avoid playback races
+  const seekVids=new Map();
+  for(const c of State.clips){ if(c.kind==='color'||!c.url) continue;   // color clips need no video
+    if(!seekVids.has(c.url)){ const v=document.createElement('video');
+    v.src=c.url; v.muted=true; await once(v,'loadedmetadata'); seekVids.set(c.url,v); } }
+
+  try{
+    for(let f=0; f<total; f++){
+      if(exportAbort){ throw new Error('cancelled'); }
+      const t=f/FPS;
+      await paintExportFrame(eg, W, H, t, seekVids);
+      const frame=new VideoFrame(ec,{timestamp:Math.round(t*1e6),duration:Math.round(1e6/FPS)});
+      venc.encode(frame,{keyFrame:f%FPS===0}); frame.close();
+      if(venc.encodeQueueSize>8) await venc.flush();   // backpressure
+      if(f%3===0) prog(f/total*0.9,'Frame '+f+' / '+total);
+    }
+    prog(0.92,'Finalizing video…'); await venc.flush();
+
+    if(audio){ prog(0.94,'Encoding audio…'); await encodeAudioTrack(muxer,audio,()=>exportAbort); }
+
+    prog(0.99,'Writing file…'); muxer.finalize();
+    const blob=new Blob([muxer.target.buffer],{type:'video/mp4'});
+    download(blob,'export.mp4');
+    hideModal(); toast('Exported export.mp4 ('+(blob.size/1e6).toFixed(1)+' MB)');
+  }catch(e){
+    hideModal();
+    if(e.message==='cancelled') toast('Export cancelled');
+    else { console.error(e); toast('Export failed: '+e.message,true); }
+  }finally{ try{venc.close();}catch(e){} }
+}
+
+/* ---- GIF export (animated, looping) — same seek-per-frame path, gifenc encoder ---- */
+const GIF_FPS=15, GIF_MAX_W=640;
+$('#exportGifBtn').onclick=()=>exportGif();
+
+async function exportGif(){
+  const dur=projDur();
+  if(dur<=0){ toast('Add a clip first',true); return; }
+  if(State.playing) pause();
+  exportAbort=false;
+
+  let GIFEncoder,quantize,applyPalette;
+  try{ const m=await import('https://unpkg.com/gifenc@1.0.3/dist/gifenc.esm.js');
+    ({GIFEncoder,quantize,applyPalette}=m); }
+  catch(e){ toast('GIF encoder unavailable (offline?)',true); return; }
+
+  // downscale so the GIF stays a sane size; keep aspect
+  const scale=Math.min(1, GIF_MAX_W/State.outW);
+  const W=Math.max(2,Math.round(State.outW*scale)), H=Math.max(2,Math.round(State.outH*scale));
+  const ec=document.createElement('canvas'); ec.width=W; ec.height=H;
+  const eg=ec.getContext('2d',{willReadFrequently:true});
+
+  showModal('Exporting GIF');
+  const total=Math.ceil(dur*GIF_FPS);
+  if(dur>30) toast('Note: '+Math.round(dur)+'s at '+GIF_FPS+'fps → a large GIF. Trim for a smaller file.');
+  prog(0,'Setting up…');
+
+  const seekVids=new Map();
+  for(const c of State.clips){ if(c.kind==='color'||!c.url) continue;   // color clips need no video
+    if(!seekVids.has(c.url)){ const v=document.createElement('video');
+    v.src=c.url; v.muted=true; await once(v,'loadedmetadata'); seekVids.set(c.url,v); } }
+
+  const gif=GIFEncoder(), delay=Math.round(1000/GIF_FPS);
+  try{
+    for(let f=0; f<total; f++){
+      if(exportAbort) throw new Error('cancelled');
+      const t=f/GIF_FPS;
+      await paintExportFrame(eg, W, H, t, seekVids);
+      const {data}=eg.getImageData(0,0,W,H);
+      const palette=quantize(data,256);
+      const index=applyPalette(data,palette);
+      gif.writeFrame(index,W,H,{palette,delay});      // gifenc loops forever by default
+      if(f%2===0){ prog(f/total*0.96,'Frame '+f+' / '+total); await new Promise(r=>setTimeout(r)); } // yield to UI
+    }
+    prog(0.98,'Writing file…');
+    gif.finish();
+    const blob=new Blob([gif.bytes()],{type:'image/gif'});
+    download(blob,'export.gif');
+    hideModal(); toast('Exported export.gif ('+(blob.size/1e6).toFixed(1)+' MB · '+W+'×'+H+' · '+GIF_FPS+'fps)');
+  }catch(e){
+    hideModal();
+    if(e.message==='cancelled') toast('GIF export cancelled');
+    else { console.error(e); toast('GIF export failed: '+e.message,true); }
+  }
+}
+
+// export: seek every clip covering t (1, or 2 in a transition), then composite the frame.
+async function paintExportFrame(g, cw, ch, t, seekVids){
+  for(const c of clipsAt(t)){
+    const v=seekVids.get(c.url); if(!v) continue;           // color clips have no video to seek
+    const src=clamp(srcTimeAt(c,t),0,c.srcDur-1e-3);
+    if(Math.abs(v.currentTime-src)>1e-3){ v.currentTime=src; await once(v,'seeked'); }
+  }
+  renderAt(g, cw, ch, t, c=>seekVids.get(c.url), false);
+  drawOverlays(g, cw, ch, t);
+}
+
+/* mix all clip audio into one buffer via OfflineAudioContext (speed + fades) */
+async function renderMixedAudio(dur){
+  const SR=48000, ac=new (window.OfflineAudioContext||window.webkitOfflineAudioContext)(2,Math.ceil(dur*SR),SR);
+  let any=false;
+  const clips=State.clips;
+  for(let i=0;i<clips.length;i++){
+    const c=clips[i];
+    if(c.kind==='color'||!c.url) continue;        // color clips carry no audio
+    let buf;
+    try{ const resp=await fetch(c.url); const arr=await resp.arrayBuffer();
+      buf=await ac.decodeAudioData(arr); }catch(e){ continue; }
+    if(!buf) continue; any=true;
+    const src=ac.createBufferSource(); src.buffer=buf; src.playbackRate.value=c.speed;
+    const g=ac.createGain();
+    const d=tlDur(c), start=c.start, end=c.start+d;
+    // a transition crossfades the audio over the overlap; otherwise the clip's own fades apply.
+    const ovIn  = transOverlap(c, clips[i-1]);                 // crossfade-in window at the start
+    const ovOut = transOverlap(clips[i+1], c);                 // crossfade-out window at the end (next clip's transition)
+    const inRamp  = ovIn>0 ? ovIn : c.fadeIn;
+    const outRamp = ovOut>0 ? ovOut : c.fadeOut;
+    // envelope in timeline (ctx) seconds; buffer plays speed-adjusted
+    g.gain.setValueAtTime(inRamp>0?0:1, start);
+    if(inRamp>0) g.gain.linearRampToValueAtTime(1, start+inRamp);
+    if(outRamp>0){ g.gain.setValueAtTime(1, Math.max(start+inRamp, end-outRamp));
+      g.gain.linearRampToValueAtTime(0, end); }
+    src.connect(g).connect(ac.destination);
+    src.start(start, c.inPt, c.outPt-c.inPt);                  // start(when, offset, durationInBufferSeconds)
+  }
+  if(!any) return null;
+  return await ac.startRendering();
+}
+
+/* encode an AudioBuffer → AAC chunks into the muxer */
+async function encodeAudioTrack(muxer,buf,isAbort){
+  if(typeof AudioEncoder==='undefined') return;
+  const ch=buf.numberOfChannels, SR=buf.sampleRate, N=buf.length;
+  // interleave to f32
+  const inter=new Float32Array(N*ch);
+  for(let c=0;c<ch;c++){ const d=buf.getChannelData(c); for(let i=0;i<N;i++) inter[i*ch+c]=d[i]; }
+  const aenc=new AudioEncoder({ output:(chunk,meta)=>muxer.addAudioChunk(chunk,meta),
+    error:e=>console.error('aenc',e) });
+  let cfg={codec:'mp4a.40.2',sampleRate:SR,numberOfChannels:ch,bitrate:128000};
+  try{ if(!(await AudioEncoder.isConfigSupported(cfg)).supported) return; }catch(e){ return; }
+  aenc.configure(cfg);
+  const FR=1024; // frames per AudioData
+  for(let off=0; off<N; off+=FR){
+    if(isAbort&&isAbort()) break;
+    const len=Math.min(FR,N-off);
+    const slice=new Float32Array(len*ch);
+    slice.set(inter.subarray(off*ch,(off+len)*ch));
+    const ad=new AudioData({ format:'f32',sampleRate:SR,numberOfFrames:len,numberOfChannels:ch,
+      timestamp:Math.round(off/SR*1e6), data:slice });
+    aenc.encode(ad); ad.close();
+  }
+  await aenc.flush(); aenc.close();
+}
+
+/* fallback: MediaRecorder on canvas stream (WebM, real-time) */
+async function exportWebMFallback(){
+  showModal('Exporting WebM (fallback)');
+  const dur=projDur();
+  const W=State.outW-(State.outW%2),H=State.outH-(State.outH%2);
+  const ec=document.createElement('canvas'); ec.width=W; ec.height=H; const eg=ec.getContext('2d');
+  const stream=ec.captureStream(FPS);
+  const rec=new MediaRecorder(stream,{mimeType:'video/webm;codecs=vp9'}); const chunks=[];
+  rec.ondataavailable=e=>e.data.size&&chunks.push(e.data);
+  const done=new Promise(r=>rec.onstop=r);
+  rec.start();
+  const seekVids=new Map();
+  for(const c of State.clips){ if(c.kind==='color'||!c.url) continue;   // color clips need no video
+    if(!seekVids.has(c.url)){ const v=document.createElement('video');
+    v.src=c.url; v.muted=true; await once(v,'loadedmetadata'); seekVids.set(c.url,v); } }
+  const total=Math.ceil(dur*FPS);
+  for(let f=0;f<total;f++){
+    if(exportAbort)break; const t=f/FPS;
+    await paintExportFrame(eg, W, H, t, seekVids);
+    await new Promise(r=>setTimeout(r,1000/FPS));
+    prog(f/total,'Frame '+f+' / '+total);
+  }
+  rec.stop(); await done;
+  download(new Blob(chunks,{type:'video/webm'}),'export.webm');
+  hideModal(); toast('Exported export.webm (no audio in fallback)');
+}
+
+function download(blob,name){ const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob); a.download=name; a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href),4000); }
+
+/* ============================================================================
+   SAVE / LOAD PROJECTS — IndexedDB. Video bytes live in the 'blobs' store
+   (keyed by clip.blobId); each project record holds only edit metadata + a
+   reference to those blobs, so reopening relinks the footage automatically.
+   An autosave slot ('__autosave__') is written on every change.
+   ============================================================================ */
+let _db=null;
+function idbOpen(){
+  if(_db) return Promise.resolve(_db);
+  return new Promise((res,rej)=>{
+    const r=indexedDB.open('clipDB',1);
+    r.onupgradeneeded=()=>{ const db=r.result;
+      if(!db.objectStoreNames.contains('blobs')) db.createObjectStore('blobs');
+      if(!db.objectStoreNames.contains('projects')) db.createObjectStore('projects'); };
+    r.onsuccess=()=>{ _db=r.result; res(_db); };
+    r.onerror=()=>rej(r.error);
+  });
+}
+async function idbPut(store,key,val){ const db=await idbOpen();
+  return new Promise((res,rej)=>{ const tx=db.transaction(store,'readwrite');
+    tx.objectStore(store).put(val,key); tx.oncomplete=()=>res(); tx.onerror=()=>rej(tx.error); }); }
+async function idbGet(store,key){ const db=await idbOpen();
+  return new Promise((res,rej)=>{ const tx=db.transaction(store,'readonly');
+    const rq=tx.objectStore(store).get(key); rq.onsuccess=()=>res(rq.result); rq.onerror=()=>rej(rq.error); }); }
+async function idbDel(store,key){ const db=await idbOpen();
+  return new Promise((res)=>{ const tx=db.transaction(store,'readwrite');
+    tx.objectStore(store).delete(key); tx.oncomplete=()=>res(); }); }
+async function idbKeys(store){ const db=await idbOpen();
+  return new Promise((res)=>{ const tx=db.transaction(store,'readonly');
+    const rq=tx.objectStore(store).getAllKeys(); rq.onsuccess=()=>res(rq.result||[]); }); }
+
+// serialize current editor state to a plain object (thumbs included → instant reopen)
+function serialize(){
+  return { version:1, outW:State.outW, outH:State.outH, pps:State.pps,
+    clips: State.clips.map(c=>({ name:c.name, kind:c.kind||'video', color:c.color, blobId:c.blobId, srcDur:c.srcDur,
+      inPt:c.inPt, outPt:c.outPt, start:c.start, speed:c.speed,
+      fadeIn:c.fadeIn, fadeOut:c.fadeOut, transType:c.transType||'none', transDur:c.transDur??0.5,
+      keyframes:c.keyframes, thumbs:c.thumbs })),
+    texts: State.texts.map(o=>({...o})) };
+}
+
+async function saveProject(name){
+  if(!name){ name=prompt('Save project as:', currentProjName||'Untitled'); if(!name) return; }
+  const rec=serialize(); rec.name=name; rec.savedAt=new Date().toISOString();
+  await idbPut('projects', name, rec);
+  currentProjName=name; dirty=false; updateSaveState('Saved “'+name+'”');
+  toast('Saved project “'+name+'”');
+}
+
+async function listProjects(){
+  const keys=(await idbKeys('projects')).filter(k=>k!=='__autosave__');
+  const recs=await Promise.all(keys.map(k=>idbGet('projects',k)));
+  return recs.filter(Boolean).sort((a,b)=>(b.savedAt||'').localeCompare(a.savedAt||''));
+}
+
+async function loadProject(rec){
+  if(typeof rec==='string') rec=await idbGet('projects',rec);
+  if(!rec){ toast('Project not found',true); return; }
+  pause();
+  // tear down current clips
+  State.clips.forEach(c=>{ try{URL.revokeObjectURL(c.url);}catch(e){} });
+  clipVideos.clear();                 // drop stale footage refs from the previous project
+  State.clips=[]; State.selId=null; State.selText=null; State.playhead=0;
+  State.texts=(rec.texts||[]).map(o=>({...o}));
+  State.outW=rec.outW||PREVIEW_W; State.outH=rec.outH||PREVIEW_H;
+  if(rec.pps){ State.pps=rec.pps; $('#tlZoom').value=rec.pps; $('#ppsVal').textContent=rec.pps; }
+  let missing=0;
+  for(const cd of rec.clips){
+    if(cd.kind==='color'){                              // solid-colour clip — no footage to load
+      State.clips.push({ id:uid(), kind:'color', name:cd.name||'Color', color:cd.color||'#1e2030',
+        srcDur:cd.srcDur||3600, inPt:cd.inPt, outPt:cd.outPt, start:cd.start, speed:cd.speed||1,
+        fadeIn:cd.fadeIn, fadeOut:cd.fadeOut, transType:cd.transType||'none', transDur:cd.transDur??0.5,
+        keyframes:cd.keyframes||[], thumbs:[] });
+      continue;
+    }
+    const blob=await idbGet('blobs', cd.blobId);
+    if(!blob){ missing++; continue; }
+    const url=URL.createObjectURL(blob);
+    const v=document.createElement('video'); v.src=url; v.preload='auto'; v.crossOrigin='anonymous';
+    wireRedraw(v);
+    await new Promise(r=>{ v.addEventListener('loadedmetadata',r,{once:true});
+      v.addEventListener('error',r,{once:true}); });
+    const nc={ id:uid(), name:cd.name, url, video:v, blobId:cd.blobId,
+      srcDur:cd.srcDur, inPt:cd.inPt, outPt:cd.outPt, start:cd.start, speed:cd.speed,
+      fadeIn:cd.fadeIn, fadeOut:cd.fadeOut, transType:cd.transType||'none', transDur:cd.transDur??0.5,
+      keyframes:cd.keyframes||[], thumbs:cd.thumbs||[] };
+    State.clips.push(nc); clipVideos.set(nc.id,{video:v,url});
+  }
+  sortClips();
+  $('#resHint').textContent = State.clips.length? State.outW+'×'+State.outH : 'no media';
+  currentProjName = rec.name==='__autosave__'? '' : rec.name;
+  dirty=false; renderTimeline(); updateTimeUI(); drawFrame(); syncInspector(); resetHistory();
+  updateSaveState(rec.name==='__autosave__'?'Restored last session':'Opened “'+rec.name+'”');
+  if(missing) toast(missing+' clip(s) had no stored footage and were skipped',true);
+  else toast('Opened “'+(rec.name||'project')+'”');
+}
+
+/* dirty tracking + debounced autosave */
+let currentProjName='', dirty=false, autosaveT=null;
+function updateSaveState(msg){ $('#saveState').textContent=msg|| (dirty?'Unsaved changes':''); }
+function markDirty(){ dirty=true; updateSaveState('Unsaved changes'); recordHistory();
+  clearTimeout(autosaveT); autosaveT=setTimeout(()=>{
+    const rec=serialize(); rec.name='__autosave__'; rec.savedAt=new Date().toISOString();
+    idbPut('projects','__autosave__',rec).catch(()=>{}); }, 1500); }
+
+/* hook markDirty into the mutating operations via a light wrapper on reflow */
+const _reflow=reflow; reflow=function(){ _reflow.apply(this,arguments); markDirty(); };
+
+/* ---- undo / redo (global history) ---------------------------------------- */
+/* Snapshots are STRUCTURAL only — clip metadata + texts + selection, never the
+   heavy/un-clonable <video> elements. On restore each clip re-links to its live
+   <video> through `clipVideos` (id → {video,url}), which we keep for the whole
+   session so a deleted-then-undone clip still has its footage. markDirty() is the
+   single mutation choke-point, so every edit funnels one entry into history.
+   Rapid bursts (slider drags, marker drags) coalesce into ONE undo step. */
+const HIST_MAX=80;
+let undoStack=[], redoStack=[], histBase=null, histBurst=false, histTimer=null, histSuspend=false;
+
+function snapshot(){
+  return { clips: State.clips.map(c=>({ id:c.id, name:c.name, kind:c.kind, color:c.color, blobId:c.blobId,
+      srcDur:c.srcDur, inPt:c.inPt, outPt:c.outPt, start:c.start, speed:c.speed,
+      fadeIn:c.fadeIn, fadeOut:c.fadeOut, transType:c.transType, transDur:c.transDur,
+      keyframes:c.keyframes.map(k=>({...k})), thumbs:c.thumbs })),       // thumbs shared by ref (immutable-ish)
+    texts: State.texts.map(o=>({...o})),
+    selId:State.selId, selText:State.selText, playhead:State.playhead, outW:State.outW, outH:State.outH };
+}
+function applySnapshot(s){
+  histSuspend=true; pause();
+  State.clips = s.clips.map(cd=>{
+    const c={ id:cd.id, name:cd.name, kind:cd.kind, color:cd.color, blobId:cd.blobId,
+      srcDur:cd.srcDur, inPt:cd.inPt, outPt:cd.outPt, start:cd.start, speed:cd.speed,
+      fadeIn:cd.fadeIn, fadeOut:cd.fadeOut, transType:cd.transType, transDur:cd.transDur,
+      keyframes:cd.keyframes.map(k=>({...k})), thumbs:cd.thumbs };
+    if(cd.kind!=='color'){ const rec=clipVideos.get(cd.id); if(rec){ c.video=rec.video; c.url=rec.url; } }
+    return c;
+  });
+  State.texts = s.texts.map(o=>({...o}));
+  State.selId=s.selId; State.selText=s.selText; State.outW=s.outW; State.outH=s.outH;
+  sortClips(); State.playhead=clamp(s.playhead,0,Math.max(0,projDur()));
+  $('#resHint').textContent = State.clips.some(c=>c.video)? State.outW+'×'+State.outH
+                            : (State.clips.length?'no media':'no media');
+  renderTimeline(); syncInspector(); updateTimeUI(); positionPlayhead(); drawFrame();
+  markDirty();                       // persist restored state (recordHistory skipped via histSuspend)
+  histSuspend=false;
+}
+function recordHistory(){
+  if(histSuspend) return;
+  if(!histBurst){                     // first change of a fresh burst → remember where we came from
+    if(histBase) undoStack.push(histBase);
+    if(undoStack.length>HIST_MAX) undoStack.shift();
+    redoStack.length=0; histBurst=true; updateUndoUI();
+  }
+  clearTimeout(histTimer);            // burst ends after a short quiet period
+  histTimer=setTimeout(()=>{ histBurst=false; histBase=snapshot(); }, 400);
+}
+function undo(){
+  if(!undoStack.length){ toast('Nothing to undo'); return; }
+  clearTimeout(histTimer); histBurst=false;
+  redoStack.push(snapshot()); applySnapshot(undoStack.pop());
+  histBase=snapshot(); updateUndoUI();
+}
+function redo(){
+  if(!redoStack.length){ toast('Nothing to redo'); return; }
+  clearTimeout(histTimer); histBurst=false;
+  undoStack.push(snapshot()); applySnapshot(redoStack.pop());
+  histBase=snapshot(); updateUndoUI();
+}
+function resetHistory(){ undoStack.length=0; redoStack.length=0; histBurst=false;
+  clearTimeout(histTimer); histBase=snapshot(); updateUndoUI(); }
+function updateUndoUI(){ const u=$('#undoBtn'), r=$('#redoBtn');
+  if(u) u.disabled=!undoStack.length; if(r) r.disabled=!redoStack.length; }
+
+/* buttons */
+$('#undoBtn').onclick=undo;
+$('#redoBtn').onclick=redo;
+$('#saveBtn').onclick=()=>saveProject();
+$('#openBtn').onclick=async()=>{
+  const recs=await listProjects(); const box=$('#projList'); box.innerHTML='';
+  if(!recs.length){ box.innerHTML='<div class="none">No saved projects yet. Use 💾 Save first.</div>'; }
+  recs.forEach(r=>{
+    const d=document.createElement('div'); d.className='pj';
+    const when=(r.savedAt||'').replace('T',' ').slice(0,16);
+    d.innerHTML=`<span class="nm">${r.name}</span><span class="meta">${r.clips.length} clip(s) · ${when}</span>`;
+    d.onclick=()=>{ $('#projModal').classList.add('hidden'); loadProject(r); };
+    const del=document.createElement('button'); del.className='danger'; del.textContent='✕';
+    del.title='Delete'; del.onclick=async(e)=>{ e.stopPropagation(); if(confirm('Delete project “'+r.name+'”?')){ await idbDel('projects',r.name); $('#openBtn').onclick(); } };
+    d.appendChild(del); box.appendChild(d);
+  });
+  $('#projModal').classList.remove('hidden');
+};
+$('#projClose').onclick=()=>$('#projModal').classList.add('hidden');
+document.addEventListener('keydown',e=>{
+  if((e.ctrlKey||e.metaKey)&&e.code==='KeyS'){ e.preventDefault(); saveProject(); }
+});
+
+/* ---- help overlay --------------------------------------------------------- */
+function openHelp(){ $('#help').classList.remove('hidden');
+  requestAnimationFrame(()=>{ $('#helpBody').scrollTop=0; }); }   // reset after layout settles
+function closeHelp(){ $('#help').classList.add('hidden'); }
+$('#helpBtn').onclick=openHelp;
+$('#helpClose').onclick=closeHelp;
+$('#help').addEventListener('click',e=>{ if(e.target.id==='help') closeHelp(); });   // backdrop click
+$('#helpBody').addEventListener('click',e=>{                                          // table-of-contents jump
+  const a=e.target.closest('[data-go]'); if(!a) return;
+  const t=document.getElementById(a.dataset.go); if(t) t.scrollIntoView({block:'start'});
+});
+document.addEventListener('keydown',e=>{
+  if(e.code==='Escape'&&!$('#help').classList.contains('hidden')){ e.preventDefault(); closeHelp(); }
+});
+
+/* ---- boot ----------------------------------------------------------------- */
+renderTimeline(); updateTimeUI(); drawFrame(); resetHistory();
+// offer to restore the autosaved session, if any
+(async()=>{ try{ const a=await idbGet('projects','__autosave__');
+  if(a && a.clips && a.clips.length){
+    if(confirm('Restore your last session ('+a.clips.length+' clip'+(a.clips.length>1?'s':'')+')?')) await loadProject(a);
+  } }catch(e){} })();
+toast('Add a video to begin — or drop files on the timeline');
+</script>
+</body>
+</html>

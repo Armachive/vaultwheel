@@ -1,0 +1,5 @@
+/* Libre Baskerville (SIL Open Font License 1.1, see OFL.txt), the variable files Google Fonts serves. the plugin build has them
+   inlined by tools/font-inline.pl so that nothing leaves the device. no latin-ext italic: italics are the page's own labels */
+@font-face { font-family: "Libre Baskerville"; font-style: normal; font-weight: 400 700; font-display: swap; src: url(LibreBaskerville-latin-ext.woff2) format("woff2"); unicode-range: ; }
+@font-face { font-family: "Libre Baskerville"; font-style: normal; font-weight: 400 700; font-display: swap; src: url(LibreBaskerville-latin.woff2) format("woff2"); unicode-range: ; }
+@font-face { font-family: "Libre Baskerville"; font-style: italic; font-weight: 400; font-display: swap; src: url(LibreBaskerville-Italic-latin.woff2) format("woff2"); unicode-range: ; }

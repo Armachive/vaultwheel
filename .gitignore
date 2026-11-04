@@ -1,0 +1,11 @@
+# the vault scan, thumbnails and gifs are personal data and stay out of the repo
+/vault_full.json
+/am_thumbs.json
+/gifs.json
+# one machine's paths and secrets
+/tools/deploy.env
+.env
+*.out
+*-final.html
+/build/
+/tools/private-words

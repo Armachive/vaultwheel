@@ -1,0 +1,211 @@
+  /* the carried files laid out on a board over a blurred and faded stage: a sandbox to arrange, zoom and play them in.
+     click (or tap) the backdrop to leave */
+  #sv { position: absolute; inset: 0; z-index: 4; display: none; overflow: hidden; touch-action: none; cursor: grab;
+    background: var(--veil); backdrop-filter: blur(9px) saturate(.75); -webkit-backdrop-filter: blur(9px) saturate(.75); }
+  #sv.on { display: block; }
+  #sv.panning { cursor: grabbing; }
+  /* the board moves and scales as one layer on the GPU, so a pan or a zoom does not paint every picture again */
+  #sv .board { position: absolute; left: 0; top: 0; width: 0; height: 0; transform-origin: 0 0; will-change: transform; }
+  #sv .links { will-change: transform; }
+  /* a card far off the screen is skipped by the painter until it comes back (its box keeps its size) */
+  #sv .item.offscreen { content-visibility: hidden; }
+  #sv .item.offscreen > img, #sv .item.offscreen > canvas { visibility: hidden; }
+  #sv .item { position: absolute; border-radius: 12px; box-shadow: 0 14px 34px rgba(0,0,0,.4); cursor: move; transition: box-shadow .15s ease; }
+  #sv .item.lift { box-shadow: 0 24px 52px rgba(0,0,0,.5); }
+  #sv .item > img, #sv .item > canvas { position: absolute; inset: 0; width: 100%; height: 100%; border-radius: 12px; display: block;
+    -webkit-user-drag: none; user-select: none; pointer-events: none; }
+  #sv .item > img { object-fit: cover; box-sizing: border-box; border: 2px solid var(--line); background: var(--card); }
+  #sv .hint { pointer-events: none; position: absolute; left: 50%; bottom: 16px; transform: translateX(-50%); font: italic 400 13px var(--serif); color: var(--ink); opacity: .85; white-space: nowrap; }
+  /* the side panel: one bevelled bar down the left, in segments, with small emoji buttons and a word or two under each */
+  #sv .ops { position: absolute; right: 10px; top: 96px; max-height: calc(100% - 140px); width: 74px; padding: 6px; box-sizing: border-box; z-index: 2;
+    display: flex; flex-direction: column; align-items: stretch; gap: 4px; overflow-y: auto; scrollbar-width: none; border-radius: 14px;
+    background: var(--card); border: 1.5px solid var(--line); box-shadow: inset 1.5px 1.5px 0 var(--hi), inset -1.5px -1.5px 0 var(--lo), 0 10px 26px rgba(0,0,0,.3); }
+  #sv .ops::-webkit-scrollbar { display: none; }
+  #sv .ops .seg { display: block; flex: none; height: 1.5px; margin: 3px 4px; background: var(--line); opacity: .6; }
+  #sv .ops button { flex: none; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 6px 2px 5px; border-radius: 10px; cursor: pointer;
+    color: var(--ink); background: transparent; border: 1.5px solid transparent; font: 400 10px/1.1 var(--serif); }
+  #sv .ops button span { font-size: 18px; line-height: 1; }
+  #sv .ops button small { font-size: 10px; white-space: nowrap; }
+  #sv .ops button:hover { border-color: var(--line); filter: brightness(1.08); }
+  #sv .ops button:active { box-shadow: inset 1.5px 1.5px 0 var(--lo), inset -1.5px -1.5px 0 var(--hi); }
+  #sv .ops button:focus-visible { outline: 2px solid var(--line); outline-offset: 1px; }
+  #sv .ops button[disabled] { opacity: .4; cursor: default; filter: none; border-color: transparent; }
+  #sv .ops button.danger { background: #d8455d; border-color: #a92f45; color: #fff; box-shadow: inset 1.5px 1.5px 0 rgba(255,255,255,.35), inset -1.5px -1.5px 0 rgba(0,0,0,.25); }
+  #sv .ops button.danger[disabled] { background: #d8455d; }
+  /* each file's select tick, top left, the same size on screen at any zoom. an unticked file fades back */
+  #sv .item > .tick { position: absolute; left: 0; top: 0; z-index: 1; width: 15px; height: 15px; border-radius: 50%; cursor: pointer; box-sizing: border-box; opacity: .35; transition: opacity .15s ease;
+    transform: translate(-30%, -30%) scale(var(--inv, 1)); transform-origin: 30% 30%; display: grid; place-items: center;
+    background: var(--acc2); border: 1.5px solid var(--card); box-shadow: 0 2px 5px rgba(0,0,0,.3); }
+  /* small and see-through until you go near the file; an unticked one stays clear so you can see what is left out */
+  #sv .item:hover > .tick, #sv .item.off > .tick, #sv .item > .tick:focus-visible { opacity: 1; }
+
+  #sv .item > .tick::after { content: ''; width: 6px; height: 3px; border: solid #021109; border-width: 0 0 1.8px 1.8px; transform: translateY(-1px) rotate(-45deg); }
+  #sv .item.off > .tick { background: var(--card); border-color: var(--line); }
+  #sv .item.off > .tick::after { display: none; }
+  #sv .item.off > img, #sv .item.off > canvas { opacity: .38; filter: grayscale(.7); }
+  /* on a touch screen the tick is pressed from a 44 px square round it, the close button is 44 px, and so are the strings' hit stroke */
+  @media (pointer: coarse) {
+    #sv .item > .tick { width: 20px; height: 20px; opacity: .6; }
+    #sv .item > .tick::before { content: ''; position: absolute; inset: -12px; }
+    #sv .pgx { width: 44px; height: 44px; right: 18px; }
+    #sv .item > .xbar .pill { min-height: 34px; }
+    #sv .links .tie.hit { stroke: transparent; stroke-width: 22px; }
+  }
+  #sv .item:focus-visible { outline: 2px solid var(--acc); outline-offset: 3px; }
+  /* the batch rename: a small card beside the side panel, a pattern and a preview of the first new names */
+  #sv .pgren { position: absolute; right: 96px; top: 56px; z-index: 3; width: min(340px, calc(100% - 110px)); padding: 12px 14px; box-sizing: border-box; border-radius: 14px;
+    display: flex; flex-direction: column; gap: 8px; color: var(--ink); background: var(--card); border: 1.5px solid var(--line);
+    box-shadow: inset 1.5px 1.5px 0 var(--hi), inset -1.5px -1.5px 0 var(--lo), 0 10px 26px rgba(0,0,0,.3); font: 400 13px/1.35 var(--serif); }
+  #sv .pgren[hidden] { display: none; }
+  #sv .pgren b { font-weight: 700; }
+  #sv .pgren input { font: 400 14px var(--serif); color: var(--ink); background: var(--stage); border: 1.5px solid var(--line); border-radius: 8px; padding: 6px 8px; outline: none; }
+  #sv .pgren input:focus { border-color: var(--acc); }
+  #sv .pgren .tip { margin: 0; font-style: italic; font-size: 12px; opacity: .8; }
+  #sv .pgren .tip.bad { color: #d8455d; opacity: 1; font-style: normal; }
+  #sv .pgren .pv { margin: 0; padding-left: 0; list-style: none; font-size: 12px; opacity: .85; }
+  #sv .pgren .pv li { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #sv .pgren .row { display: flex; gap: 6px; justify-content: flex-end; }
+  #sv .pgren button[disabled] { opacity: .45; cursor: default; }
+  #sv .item > .tick:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+  /* the close button, top right under the bar, above the side panel */
+  #sv .pgx { position: absolute; right: 22px; top: 52px; z-index: 3; width: 36px; height: 36px; border-radius: 50%; cursor: pointer; display: grid; place-items: center;
+    font: 700 16px/1 var(--serif); color: var(--ink); background: var(--card); border: 1.5px solid var(--line);
+    box-shadow: inset 1.5px 1.5px 0 var(--hi), inset -1.5px -1.5px 0 var(--lo), 0 6px 16px rgba(0,0,0,.3); }
+  #sv .pgx:hover { filter: brightness(1.08); }
+  #sv .pgx:focus-visible { outline: 2px solid var(--line); outline-offset: 2px; }
+  /* the ties between files: a layer under the cards, moved with the board; the line keeps its width at any zoom */
+  #sv .links { position: absolute; left: 0; top: 0; width: 1px; height: 1px; overflow: visible; transform-origin: 0 0; pointer-events: none; }
+  #sv .links .tie { stroke: var(--line); stroke-width: 3; stroke-linecap: round; vector-effect: non-scaling-stroke; pointer-events: stroke; cursor: pointer; opacity: .85; }
+  #sv .links .tie:hover { stroke: var(--acc); stroke-width: 5; }
+  #sv .links .tie.draft { stroke-dasharray: 6 6; pointer-events: none; }
+  /* a file held still lets out a string: it glows while the string follows the pointer */
+  #sv .item.stringing { box-shadow: 0 0 0 2px var(--acc2), 0 0 22px var(--acc2); }
+  /* a file opened up in place: a bar along its top with its name, Open and shrink back */
+  #sv .item.big { box-shadow: 0 24px 60px rgba(0,0,0,.45); }
+  #sv .item > .xbar { position: absolute; left: 0; right: 0; bottom: 100%; z-index: 2; display: flex; align-items: center; gap: 6px; padding: 0 2px 6px;
+    transform: scale(var(--inv, 1)); transform-origin: 0 100%; width: calc(100% / var(--inv, 1)); box-sizing: border-box; font: 400 12px var(--serif); color: var(--ink); }
+  #sv .item > .xbar b { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 700; text-shadow: 0 1px 3px var(--card); }
+  #sv .item > .xbar .pill { font-weight: 400; }
+  /* a note's text, embedded like a note on a canvas: its own scroll, its own selection */
+  #sv .item > .embed { position: absolute; inset: 0; z-index: 1; border-radius: 12px; overflow: hidden; background: var(--card); border: 2px solid var(--line);
+    box-shadow: inset 1.5px 1.5px 0 var(--hi), inset -1.5px -1.5px 0 var(--lo); }
+  #sv .item > .embed .txt { position: absolute; inset: 0; overflow: auto; padding: 12px 14px; font: 400 13px/1.5 var(--serif); color: var(--ink); cursor: text; user-select: text; overscroll-behavior: contain; }
+  #sv .item > .embed .txt p { margin: 0 0 4px; overflow-wrap: anywhere; }
+  #sv .item > .embed .txt .h1, #sv .item > .embed .txt .h2 { font-size: 17px; font-weight: 700; margin: 8px 0 6px; }
+  #sv .item > .embed .txt .h3, #sv .item > .embed .txt .h4, #sv .item > .embed .txt .h5, #sv .item > .embed .txt .h6 { font-weight: 700; margin: 6px 0 4px; }
+  #sv .item > .embed .txt .li { padding-left: 10px; }
+  #sv .item > .embed .txt code { font: 12px "Courier New", monospace; background: var(--mist); padding: 0 3px; border-radius: 4px; }
+  #sv .item > .embed .txt u { text-decoration-color: var(--acc); color: var(--acc); }
+  /* the tick stays on top of an opened-up note's text, so it can still be pressed */
+  #sv .item > .tick { z-index: 3; }
+  /* a drawn card's box takes the card's own corner radius (set as it is placed), so a plain box shadow and the glows
+     follow the card's shape (cheaper than a drop-shadow filter on every card, redrawn on every zoom) */
+  #sv .item.drawn > canvas { border-radius: 0; }
+  /* the strings: the theme's accent with a soft glow, darker in light mode so they read on the pale board */
+  :root { --string: #4f4ca8; } :root[data-theme="dark"] { --string: #a99cff; }
+  #sv .links .tie { stroke: var(--string); stroke-width: 2.6; opacity: .95; }
+  #sv .links .tie:hover { stroke: var(--string); stroke-width: 4; }
+  #sv .links .tie.hit { filter: none; }
+  #sv .links .tie.draft { stroke-dasharray: 6 6; opacity: .8; }
+  /* the file a string comes out of, and the one it would tie to under the pointer: the same glow, following the card's own
+     shape (a drawn card glows round its outline, a picture round its frame) */
+  #sv .item.stringing, #sv .item.target { box-shadow: 0 0 0 2px var(--acc2), 0 0 18px var(--acc2); }
+  /* the lasso */
+  #sv .links .lasso { fill: color-mix(in srgb, var(--acc2) 14%, transparent); stroke: var(--acc2); stroke-width: 1.6; stroke-dasharray: 5 4; vector-effect: non-scaling-stroke; pointer-events: none; }
+  #sv .board, #sv { cursor: crosshair; }
+  #sv.panning { cursor: grabbing; }
+  /* a picked file shows its box: a thin accent outline with handles on every corner and side. dragging a handle (or a
+     right-button drag anywhere on a file) resizes it from that side */
+  #sv .item.picked { outline: 1.5px solid var(--acc2); outline-offset: 4px; }
+  #sv .item > .bb { position: absolute; z-index: 4; width: 12px; height: 12px; border-radius: 3px; box-sizing: border-box; background: var(--card); border: 2px solid var(--acc2);
+    transform: translate(-50%, -50%) scale(var(--inv, 1)); margin: 0; }
+  #sv .item > .bb[data-z=nw] { left: -4px; top: -4px; cursor: nwse-resize; }  #sv .item > .bb[data-z=n] { left: 50%; top: -4px; cursor: ns-resize; }
+  #sv .item > .bb[data-z=ne] { left: calc(100% + 4px); top: -4px; cursor: nesw-resize; }  #sv .item > .bb[data-z=e] { left: calc(100% + 4px); top: 50%; cursor: ew-resize; }
+  #sv .item > .bb[data-z=se] { left: calc(100% + 4px); top: calc(100% + 4px); cursor: nwse-resize; }  #sv .item > .bb[data-z=s] { left: 50%; top: calc(100% + 4px); cursor: ns-resize; }
+  #sv .item > .bb[data-z=sw] { left: -4px; top: calc(100% + 4px); cursor: nesw-resize; }  #sv .item > .bb[data-z=w] { left: -4px; top: 50%; cursor: ew-resize; }
+  @media (pointer: coarse) { #sv .item > .bb { width: 22px; height: 22px; border-radius: 6px; } }
+  #sv .item.sizing { outline: 1.5px dashed var(--acc2); outline-offset: 4px; }
+  /* pictures always sit in a frame, like the cards: the outline colour with the bevel inside it */
+  #sv .item > img { border: 4px solid var(--line); border-radius: 14px; box-shadow: inset 2px 2px 0 var(--hi), inset -2px -2px 0 var(--lo); }
+  /* an opened note, drawing or folder: one frame, its own card on top as the header, what is inside it below */
+  #sv .item.open-text, #sv .item.open-draw, #sv .item.open-folder, #sv .item.drawn.open-text, #sv .item.drawn.open-draw, #sv .item.drawn.open-folder { border-radius: 16px; background: var(--card); box-shadow: 0 0 0 3px var(--line), inset 2px 2px 0 var(--hi), inset -2px -2px 0 var(--lo), 0 18px 40px rgba(0,0,0,.35); }
+  #sv .item.open-text > canvas, #sv .item.open-draw > canvas, #sv .item.open-folder > canvas { height: var(--hh); bottom: auto; filter: none; }
+  #sv .item.open-text > .embed, #sv .item.open-draw > .embed, #sv .item.open-folder > .embed { top: var(--hh); border: 0; border-radius: 0 0 14px 14px; box-shadow: none; background: transparent; }
+  #sv .item > .embed .txt.draw { display: grid; place-items: center; background: #fff; }
+  #sv .item > .embed .txt.draw img { max-width: 100%; max-height: 100%; }
+  #sv .item > .embed .txt.md h1, #sv .item > .embed .txt.md h2 { font-size: 17px; margin: 8px 0 6px; } #sv .item > .embed .txt.md h3 { font-size: 15px; margin: 6px 0 4px; }
+  #sv .item > .embed .txt.md img { max-width: 100%; } #sv .item > .embed .txt.md p { margin: 0 0 6px; }
+  /* the saved boards card, beside the side panel like the rename card */
+  #sv .pgboards { position: absolute; right: 96px; top: 56px; z-index: 3; width: min(340px, calc(100% - 110px)); max-height: calc(100% - 120px); padding: 12px 14px; box-sizing: border-box; border-radius: 14px;
+    display: flex; flex-direction: column; gap: 8px; color: var(--ink); background: var(--card); border: 1.5px solid var(--line);
+    box-shadow: inset 1.5px 1.5px 0 var(--hi), inset -1.5px -1.5px 0 var(--lo), 0 10px 26px rgba(0,0,0,.3); font: 400 13px/1.35 var(--serif); }
+  #sv .pgboards[hidden] { display: none; }
+  #sv .pgboards .row { display: flex; gap: 6px; }
+  #sv .pgboards input { flex: 1; min-width: 0; font: 400 14px var(--serif); color: var(--ink); background: var(--stage); border: 1.5px solid var(--line); border-radius: 8px; padding: 6px 8px; outline: none; }
+  #sv .pgboards input:focus { border-color: var(--acc); }
+  #sv .pgboards .bl { margin: 0; padding: 0; list-style: none; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; }
+  #sv .pgboards .bl li { display: flex; align-items: center; gap: 6px; }
+  #sv .pgboards .bl li span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #sv .pgboards .tip { margin: 0; font-style: italic; font-size: 12px; opacity: .8; }
+  /* no line of text along the bottom of the board (the count of what is ticked and the how-to are gone) */
+  #sv .hint { display: none; }
+  /* an opened note, drawing or folder already shows its name on its own card underneath, so the bar above keeps only its
+     buttons (pushed to the right) */
+  #sv .item.open-text > .xbar b, #sv .item.open-draw > .xbar b, #sv .item.open-folder > .xbar b { visibility: hidden; }
+  /* the strings glow as one layer (one filter for all of them, not one per string) */
+  #sv .links { filter: drop-shadow(0 0 2px var(--string)) drop-shadow(0 0 5px var(--string)); }
+  /* phones: a lighter blur behind the board (a full-screen blur over the moving scene is costly there), and no system
+     menu or text selection on a long press, which is how a string or a lasso starts */
+  #sv { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+  @media (pointer: coarse) { #sv { backdrop-filter: blur(4px) saturate(.8); -webkit-backdrop-filter: blur(4px) saturate(.8); } }
+  #sv .pgboards .head { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+  #sv .pgboards .head .pill { padding: 3px 8px; }
+  /* ---------- the editors: a panel over the board, in the board's own look ---------- */
+  #sv .pged { position: absolute; inset: 56px 96px 10px 10px; z-index: 6; display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; box-sizing: border-box; border-radius: 14px;
+    color: var(--ink); background: var(--card); border: 1.5px solid var(--line); box-shadow: inset 1.5px 1.5px 0 var(--hi), inset -1.5px -1.5px 0 var(--lo), 0 14px 40px rgba(0,0,0,.4); font: 400 13px/1.35 var(--serif); }
+  #sv .pged[hidden] { display: none; }
+  #sv .pged .head { display: flex; align-items: center; gap: 8px; min-height: 28px; }
+  #sv .pged .head b { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; }
+  #sv .pged .head .note { font-style: italic; font-size: 12px; opacity: .75; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #sv .pged .head .grow { flex: 1; }
+  #sv .pged .head .pill[data-e=save] { background: var(--acc); color: #fff; border-color: var(--acc); font-weight: 700; }
+  #sv .pged .head .pill[disabled] { opacity: .45; cursor: default; }
+  #sv .pged .head .why { font-size: 12px; opacity: .8; white-space: nowrap; }
+  #sv .pged .head .why[hidden] { display: none; }
+  #sv .pged .work { flex: 1; min-height: 0; position: relative; display: flex; align-items: center; justify-content: center; overflow: hidden; border-radius: 10px; background: var(--stage); }
+  #sv .pged .work > img, #sv .pged .work > video { max-width: 100%; max-height: 100%; display: block; }
+  #sv .pged .work .am { width: 100%; height: 100%; border: 0; display: block; background: #1b1b1f; }
+  /* on a narrow screen the editor takes the whole width, over the side panel too (its ✕ is still on top) */
+  @media (max-width: 600px) { #sv .pged { inset: 56px 6px 6px 6px; } }
+  #sv .pged .work .busy { position: absolute; inset: 0; display: grid; place-items: center; font-style: italic; background: color-mix(in srgb, var(--card) 60%, transparent); }
+  #sv .pged .work .busy[hidden] { display: none; }
+  #sv .pged .tools { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+  #sv .pged .tools label { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; white-space: nowrap; }
+  #sv .pged .tools input[type=range] { width: 110px; accent-color: var(--acc); }
+  #sv .pged .tools select { font: 400 12px var(--serif); color: var(--ink); background: var(--stage); border: 1.5px solid var(--line); border-radius: 6px; padding: 3px 5px; }
+  #sv .pged .tools .sep { width: 1.5px; height: 18px; background: var(--line); opacity: .6; }
+  #sv .pged .tools .pill { font-weight: 400; }
+  #sv .pged .tools .pill.on { background: var(--acc); color: #fff; border-color: var(--acc); }
+  /* the video cutter's bar: the kept stretch in the accent, the playhead a thin line */
+  /* the video timeline: kept stretches in the accent, what is cut in the mist behind them, the marked stretch in red */
+  /* the picture editor: Cropper.js reskinned. its chrome takes the theme's lines and accent, the dashed grid is dropped */
+  #sv .pged .cropper-view-box { outline: 2px solid var(--acc2); outline-color: var(--acc2); }
+  #sv .pged .cropper-line, #sv .pged .cropper-point { background-color: var(--acc2); }
+  #sv .pged .cropper-point { width: 10px; height: 10px; opacity: .95; border-radius: 50%; border: 1.5px solid var(--card); }
+  #sv .pged .cropper-dashed { border-color: color-mix(in srgb, var(--acc2) 45%, transparent); }
+  #sv .pged .cropper-center { display: none; }
+  #sv .pged .cropper-modal { background: var(--stage); opacity: .6; }
+  #sv .pged .cropper-bg { background: none; }
+  @media (pointer: coarse) { #sv .pged .cropper-point { width: 18px; height: 18px; } #sv .pged { inset: 56px 96px 6px 6px; padding: 8px; } #sv .pged .tools .pill { min-height: 34px; } }
+  /* the editor's head never shrinks, and a second, bigger ✕ sits pinned in the panel's corner above everything in it, so
+     there is always a way out even if a library's own styling gets in the way */
+  #sv .pged .head { flex: none; position: relative; z-index: 2; }
+  #sv .pged > .xclose { position: absolute; right: 6px; top: 6px; z-index: 9; width: 40px; height: 40px; border-radius: 50%; cursor: pointer; display: grid; place-items: center;
+    font: 700 18px/1 var(--serif); color: var(--ink); background: var(--card); border: 1.5px solid var(--line); box-shadow: inset 1.5px 1.5px 0 var(--hi), inset -1.5px -1.5px 0 var(--lo), 0 4px 12px rgba(0,0,0,.3); }
+  #sv .pged .head .pill[data-e=close] { display: none; }
+  #sv .pged .head { padding-right: 46px; }
+  #sv .pged .note { white-space: normal; }
+  /* what went wrong, in the middle of the panel */
+  #sv .pged .work .fail { display: flex; flex-direction: column; align-items: center; gap: 14px; max-width: 80%; text-align: center; font-size: 15px; line-height: 1.4; }
+  #sv .pged .work .fail p { margin: 0; }
+  #sv .pged .work .fail .pill { font-size: 14px; padding: 8px 18px; }

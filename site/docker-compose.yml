@@ -1,0 +1,38 @@
+# an example: copy this file, server.py (as app/server.py) and a live build (as app/index.html) to a folder of your own, with
+# a .env beside it made from .env.example. docker compose reads the settings below from that .env
+services:
+  vault-tree:
+    image: python:3.12-alpine
+    container_name: vault-tree
+    restart: unless-stopped
+    user: "${SITE_USER:-1000:1000}"
+    command: ["python", "-u", "/app/server.py"]
+    env_file: .env
+    environment:
+      - VAULT=/vault
+      - VAULT_NAME=${VAULT_NAME:?set VAULT_NAME in .env}
+      - PORT=8110
+      - SCAN_EVERY=10
+      - BASE_PATH=/vault-tree
+      - JOURNAL=/journal/moves.log
+      - FRAME_ANCESTORS=${FRAME_ANCESTORS:-'self'}
+    ports:
+      - "127.0.0.1:8110:8110"
+    volumes:
+      - ./app:/app:ro
+      - ./journal:/journal
+      - ${VAULT_PATH:?set VAULT_PATH in .env}:/vault
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 128m
+    pids_limit: 64
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8110/healthz', timeout=3).read()==b'ok' else 1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3

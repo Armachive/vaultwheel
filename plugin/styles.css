@@ -1,0 +1,15 @@
+/* the wheel fills its tab to every edge: Obsidian's own padding on a view (and the room it keeps at the bottom on a
+   phone or tablet) is taken off */
+.workspace-leaf-content[data-type="vaultwheel-view"] { padding: 0 !important; }
+.workspace-leaf-content[data-type="vaultwheel-view"] > .view-content,
+.workspace-leaf-content .view-content.vaultwheel-host { padding: 0 !important; margin: 0 !important; overflow: hidden; position: relative; }
+.vaultwheel-host iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; display: block; background: #000d06; }
+/* on a phone or tablet the view's own header (an empty bar with a menu button) sat over the wheel's top bar, so it goes */
+.is-mobile .workspace-leaf-content[data-type="vaultwheel-view"] > .view-header { display: none !important; }
+/* alone in the left sidebar the wheel has the whole height, so its tab strip goes. a second tab there brings the strip back */
+.mod-left-split .workspace-tabs:has(> .workspace-tab-container > .workspace-leaf:only-child > .workspace-leaf-content[data-type="vaultwheel-view"]) > .workspace-tab-header-container { display: none; }
+/* said over a page that did not come up */
+.vaultwheel-fail { position: absolute; inset: 0; z-index: 2; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 16px; text-align: center; background: var(--background-primary); color: var(--text-normal); }
+.vaultwheel-fail-why { font-size: var(--font-smaller); color: var(--text-muted); overflow-wrap: anywhere; }
+/* the hidden page a theme is read from */
+.vaultwheel-probe { position: fixed; left: -9999px; top: 0; width: 800px; height: 600px; visibility: hidden; border: 0; }

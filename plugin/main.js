@@ -19,6 +19,8 @@ const LEFT_MIN = 260, LEFT_WIDE = 380;
 // and how much of the height it gets when it is new. a phone has no stacked groups, and only All properties stays on its left
 const TOP = ['file-properties', 'all-properties', 'backlink', 'outgoing-link'], PROPS = 'all-properties', PROPS_HEIGHT = 27;
 const typeOf = l => { const s = l.getViewState ? l.getViewState() : null; return s ? s.type : ''; };
+// a wheel that is the only tab of a group in the left sidebar, and the class its group gets for that (see markAlone)
+const ALONE_WHEEL = '.mod-left-split .workspace-tabs > .workspace-tab-container > .workspace-leaf:only-child > .workspace-leaf-content[data-type="' + VIEW + '"]', ALONE = 'vaultwheel-alone';
 const THUMB_PX = 360, THUMB_KEEP = 500, THUMB_MAX_PIXELS = 120e6, THUMB_MAX_BYTES = 150 * 1024 * 1024;
 const BINARY_MAX = 400 * 1024 * 1024;
 // the requests that change something on disk (see handle)
@@ -263,6 +265,8 @@ class WheelView extends ItemView {
   getDisplayText() { return 'VaultWheel'; }
   getIcon() { return 'disc'; }
   async onOpen() {
+    // (a layout coming in only says so once all of it is ready, and that waits for this page)
+    this.plugin.markAlone();
     // the page tells us when you are in the middle of something (carrying, or in the playground), so an update waits
     this.busy = false; this.pendingReload = false;
     this.onMsg = e => {
@@ -744,7 +748,7 @@ module.exports = class VaultWheel extends Plugin {
   }
   // #endif
   onunload() {
-    this.gone = true;
+    this.gone = true; this.markAlone();
     // (loading itself again the new plugin takes the tablet layout over as it is, so the screen does not flash the phone's)
     if (!this.reloading) this.tabletLayout(false);
     else if (this.tabletWatch) { this.tabletWatch.disconnect(); this.tabletWatch = null; }
@@ -772,6 +776,14 @@ module.exports = class VaultWheel extends Plugin {
       body.toggleClass('is-tablet', big); body.toggleClass('is-phone', !big);
     } else return;
     this.app.workspace.trigger('resize'); window.dispatchEvent(new Event('resize'));
+  }
+  // alone in the left sidebar the wheel has the whole height, so styles.css takes its tab strip away by this class on its group.
+  // looked at on every layout change whatever else is going on (layoutChanged stops while the wheel is being moved), and gone with the plugin
+  markAlone() {
+    const groups = new Set();
+    if (!this.gone) for (const el of document.querySelectorAll(ALONE_WHEEL)) groups.add(el.closest('.workspace-tabs'));
+    for (const g of document.querySelectorAll('.' + ALONE)) if (!groups.has(g)) g.classList.remove(ALONE);
+    for (const g of groups) g.classList.add(ALONE);
   }
   // a new wheel in a leaf, whole: its view open and its page loaded. false if not, and the leaf is left for the caller
   async wheelInto(leaf, state) {
@@ -1068,9 +1080,10 @@ module.exports = class VaultWheel extends Plugin {
   }
   async keepPlace() {
     // the layout is listened to from the start, but only believed once startup is over: settle
-    this.registerEvent(this.app.workspace.on('layout-change', () => this.layoutChanged()));
+    this.registerEvent(this.app.workspace.on('layout-change', () => { this.markAlone(); this.layoutChanged(); }));
     this.registerEvent(this.app.workspace.on('quit', () => { this.leaving = true; }));
     this.registerDomEvent(window, 'beforeunload', () => { this.leaving = true; });
+    this.markAlone();
     const place = this.stored();
     this.noteLeaves();
     try { if (place === 'left' || place === 'right') await this.toSidebar(place, false); await this.arrangeRight(false); }

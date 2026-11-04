@@ -40,7 +40,7 @@ function world(mobile, desktop, fresh) {
   const load = (code) => {
     const m = { exports: {} };
     new Function('require', 'module', 'exports', 'window', 'document', 'localStorage', 'MutationObserver', 'Event', 'getComputedStyle', code)(
-      n => n === 'obsidian' ? obsidian : require(n), m, m.exports, G, { body }, { getItem: k => (w.store && k in w.store ? w.store[k] : null), setItem(k, v) { if (w.store) w.store[k] = String(v); } },
+      n => n === 'obsidian' ? obsidian : require(n), m, m.exports, G, { body, querySelectorAll: s => (w.dom ? w.dom().filter(e => e.closest(s) === e) : []) }, { getItem: k => (w.store && k in w.store ? w.store[k] : null), setItem(k, v) { if (w.store) w.store[k] = String(v); } },
       class { constructor(f) { this.on = true; w.watchers.push(this); } observe() { } disconnect() { this.on = false; } },
       class { }, () => ({ getPropertyValue: () => '1' }));
     return m.exports;
@@ -730,6 +730,81 @@ function world(mobile, desktop, fresh) {
     const G0 = d.obsidian; const m = d.say({ t: 'rename', p: 'X/A.md', name: 'A2.md' }).then(x => { said = x; });
     for (let i = 0; i < 6; i++) await tick();
     T('Obsidian saying done before it moved anything is not taken for done', said === null && d.text('X/A.md') === 'from X', JSON.stringify(said));
+  }
+  // the class that takes the wheel's tab strip away (markAlone): a small stand-in for Obsidian's elements, in the same shape, with
+  // enough of querySelectorAll and closest for the selector main.js really uses
+  {
+    const VW = 'vaultwheel-view', ALONE = '.vaultwheel-alone';
+    const el = (cls, kids = [], type) => {
+      const e = { cls: new Set(cls.split(' ')), type, kids: [], up: null, classList: { add: c => e.cls.add(c), remove: c => e.cls.delete(c), contains: c => e.cls.has(c) } };
+      e.closest = s => { for (let x = e; x; x = x.up) if (fits(x, s)) return x; return null; };
+      for (const k of kids) { k.up = e; e.kids.push(k); }
+      return e;
+    };
+    const simple = (e, part) => [...part.matchAll(/\.([\w-]+)|\[data-type="([\w-]+)"\]|:(only-child)/g)].every(m => m[1] ? e.cls.has(m[1]) : m[2] ? e.type === m[2] : e.up && e.up.kids.length === 1);
+    // right to left. a ' ' looks at every parent, and only one chain has to work
+    const chain = (e, parts) => {
+      if (!e || !simple(e, parts[parts.length - 1])) return false;
+      const rest = parts.slice(0, -1); if (!rest.length) return true;
+      if (rest[rest.length - 1] === '>') return chain(e.up, rest.slice(0, -1));
+      for (let x = e.up; x; x = x.up) if (chain(x, rest)) return true;
+      return false;
+    };
+    const fits = (e, s) => chain(e, s.trim().split(/\s+/));
+    const leafEl = type => el('workspace-leaf', [el('workspace-leaf-content', [], type)]);
+    const group = (...types) => el('workspace-tabs', [el('workspace-tab-header-container'), el('workspace-tab-container', types.map(leafEl))]);
+    const split = (n, ...groups) => el('workspace-split ' + n, groups);
+    const box = g => g.kids[1];
+    const start = async (doc, opts = {}) => {
+      const w = world(false, true, true); let fire = () => { };
+      w.dom = () => { const all = [], walk = e => { all.push(e); e.kids.forEach(walk); }; walk(doc()); return all; };
+      w.app.workspace.on = (e, f) => { if (e === 'layout-change') fire = f; };
+      if (opts.code) w.put(DIR + '/main.js', opts.code);
+      await w.start();
+      const marked = () => w.dom().filter(e => fits(e, ALONE));
+      return { w, marked, fire: () => fire(), plugin: () => w.current() };
+    };
+    let left = group(VW), page = el('workspace', [split('mod-left-split', left), split('mod-root', group('markdown')), split('mod-right-split', group('outline'))]);
+    const r = await start(() => page);
+    const only = g => r.marked().length === 1 && r.marked()[0] === g;
+    T('alone in the left sidebar: its group has the class from the start', only(left));
+    // every state in which layoutChanged would stop first. (a second tab joins, it goes; the tab leaves, it comes back)
+    for (const [why, on, off] of [['starting up', p => { p.settled = false; }, () => { }], ['placing', p => { p.settled = true; p.placing = true; }, p => { p.placing = false; }], ['reloading', p => { p.reloading = true; }, p => { p.reloading = false; }], ['leaving', p => { p.leaving = true; }, p => { p.leaving = false; }]]) {
+      on(r.plugin());
+      const tab = leafEl('tag'); tab.up = box(left); box(left).kids.push(tab); r.fire();
+      T('while ' + why + ': a second tab takes the class away', !r.marked().length, r.marked().length + '');
+      box(left).kids.pop(); r.fire();
+      T('while ' + why + ': and that tab leaving brings it back', only(left));
+      off(r.plugin());
+    }
+    // the wheel moves away, to the right and to a tab: nothing is left marked, and the right sidebar's own group is never marked
+    const leftS = page.kids[0], rightS = page.kids[2], rootS = page.kids[1];
+    const [wheelLeaf] = box(left).kids.splice(0, 1); wheelLeaf.up = null;
+    const rg = group(); box(rg).kids.push(wheelLeaf); wheelLeaf.up = box(rg); rg.up = rightS; rightS.kids.push(rg); r.fire();
+    T('the wheel moved to the right sidebar: no class, there or on the group it left', !r.marked().length, r.marked().length + '');
+    rightS.kids.pop(); const mg = group(); box(mg).kids.push(wheelLeaf); wheelLeaf.up = box(mg); mg.up = rootS; rootS.kids.push(mg); r.fire();
+    T('and in a tab of its own in the main area: none', !r.marked().length, r.marked().length + '');
+    // the top group over it: the class goes on the wheel's group and nowhere else
+    rootS.kids.pop(); const top = group('file-properties', 'all-properties'), wg = group(); box(wg).kids.push(wheelLeaf); wheelLeaf.up = box(wg);
+    for (const g of [top, wg]) { g.up = leftS; } leftS.kids = [top, wg]; r.fire();
+    T('under a top group: only the wheel\'s group has it', only(wg));
+    // a saved workspace: every element is new
+    const before = wg; page = el('workspace', [split('mod-left-split', group('file-explorer', 'search')), split('mod-root', group('markdown')), split('mod-right-split', group('outline'))]); r.fire();
+    T('a saved workspace with no wheel coming in: nothing marked', !r.marked().length, r.marked().length + '');
+    left = group(VW); page = el('workspace', [split('mod-left-split', left), split('mod-root', group('markdown'))]); r.fire();
+    T('one with the wheel alone on the left: the new group has it', only(left) && left !== before);
+    // the plugin going and coming back
+    await r.w.app.plugins.disablePlugin(ID);
+    T('the plugin off: no class is left anywhere', !r.marked().length && !left.cls.has('vaultwheel-alone'), r.marked().length + '');
+    await r.w.app.plugins.enablePlugin(ID); await tick();
+    T('the plugin back: its group has it again', only(left));
+    // (the view asks too: a layout coming in tells nobody until all of it is ready, which waits for the page)
+    const asked = r.plugin(); let looked = 0; const m0 = asked.markAlone; asked.markAlone = function () { looked++; return m0.call(this); };
+    const v = asked.factory({}); v.loadPage = async () => { }; v.registerDomEvent = () => { }; v.registerEvent = () => { }; v.containerEl = {}; v.app = asked.app;
+    await v.onOpen();
+    T('a wheel opening looks at once', looked === 1, String(looked));
+    await r.w.app.plugins.disablePlugin(ID);
+    T('turned off again: gone', !r.marked().length, r.marked().length + '');
   }
   //RELOAD
 } catch (err) { out.push('FAIL threw :: ' + err.stack); }

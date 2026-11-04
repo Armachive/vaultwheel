@@ -1,13 +1,15 @@
 /* the wheel fills its tab to every edge: Obsidian's own padding on a view (and the room it keeps at the bottom on a
    phone or tablet) is taken off */
-.workspace-leaf-content[data-type="vaultwheel-view"] { padding: 0 !important; }
-.workspace-leaf-content[data-type="vaultwheel-view"] > .view-content,
-.workspace-leaf-content .view-content.vaultwheel-host { padding: 0 !important; margin: 0 !important; overflow: hidden; position: relative; }
+.workspace-leaf-content.workspace-leaf-content[data-type="vaultwheel-view"] { padding: 0; }
+/* (the classes twice: Obsidian's own margin on a phone's view is four classes deep, and these go by weight alone, wherever the view sits) */
+.workspace-leaf-content.workspace-leaf-content[data-type="vaultwheel-view"] > .view-content.view-content,
+.workspace-leaf-content.workspace-leaf-content .view-content.view-content.vaultwheel-host { padding: 0; margin: 0; overflow: hidden; position: relative; }
 .vaultwheel-host iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; display: block; background: #000d06; }
 /* on a phone or tablet the view's own header (an empty bar with a menu button) sat over the wheel's top bar, so it goes */
-.is-mobile .workspace-leaf-content[data-type="vaultwheel-view"] > .view-header { display: none !important; }
-/* alone in the left sidebar the wheel has the whole height, so its tab strip goes. a second tab there brings the strip back */
-.mod-left-split .workspace-tabs:has(> .workspace-tab-container > .workspace-leaf:only-child > .workspace-leaf-content[data-type="vaultwheel-view"]) > .workspace-tab-header-container { display: none; }
+.is-mobile .workspace-leaf-content.workspace-leaf-content[data-type="vaultwheel-view"] > .view-header.view-header { display: none; }
+/* alone in the left sidebar the wheel has the whole height, so its tab strip goes. a second tab there brings the strip back: the
+   plugin keeps this class on the group as things move (markAlone in main.js) */
+.mod-left-split .workspace-tabs.vaultwheel-alone > .workspace-tab-header-container { display: none; }
 /* said over a page that did not come up */
 .vaultwheel-fail { position: absolute; inset: 0; z-index: 2; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 16px; text-align: center; background: var(--background-primary); color: var(--text-normal); }
 .vaultwheel-fail-why { font-size: var(--font-smaller); color: var(--text-muted); overflow-wrap: anywhere; }

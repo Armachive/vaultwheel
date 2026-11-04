@@ -95,7 +95,7 @@
   #sv .item > .embed .txt .h3, #sv .item > .embed .txt .h4, #sv .item > .embed .txt .h5, #sv .item > .embed .txt .h6 { font-weight: 700; margin: 6px 0 4px; }
   #sv .item > .embed .txt .li { padding-left: 10px; }
   #sv .item > .embed .txt code { font: 12px "Courier New", monospace; background: var(--mist); padding: 0 3px; border-radius: 4px; }
-  #sv .item > .embed .txt u { text-decoration-color: var(--acc); color: var(--acc); }
+  #sv .item > .embed .txt u { color: var(--acc); }
   /* the tick stays on top of an opened-up note's text, so it can still be pressed */
   #sv .item > .tick { z-index: 3; }
   /* a drawn card's box takes the card's own corner radius (set as it is placed), so a plain box shadow and the glows

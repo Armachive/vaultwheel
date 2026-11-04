@@ -845,6 +845,8 @@ module.exports = class VaultWheel extends Plugin {
   topOut(wheel) {
     const wk = this.app.workspace;
     if (!this.device.props || Platform.isMobile) return false;
+    // (an old install's wheel found here with its home still a tab has no group yet: it comes now, not at the next start)
+    if (!this.device.topPlaced && wk.createLeafBySplit && wk.createLeafInParent) return true;
     const top = this.topGroup(wheel);
     return TOP.some(t => wk.getLeavesOfType(t).some(l => l.getRoot() === wk.leftSplit && l.parent !== top && !(this.stuck && this.stuck.has(l))));
   }

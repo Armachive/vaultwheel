@@ -423,6 +423,16 @@ function world(mobile, desktop, fresh) {
     T('a linked pane in the main area is not taken from its note', r.tree('left') === TOPS + '|' + VW + '*' && r.types('main').includes('backlink:b'), r.tree('left') + ' / ' + r.types('main'));
     r = await wheelIn(false, null, ['left/a:file-properties:f', 'left/a:' + PR + ':s', 'left/a:backlink:b', 'left/a:outgoing-link:g', 'right/r:outline:o'], stack({ device: Object.assign({ topPlaced: true }, home) }));
     T('a wheel that is not there gets a group of its own below them, and their height stays', r.tree('left') === TOPS + '|' + VW + '*' && r.tree('right') === 'outline*' && !r.log.some(x => /gone/.test(x)), r.tree('left') + ' ' + r.log.join());
+    // an old install whose wheel is already on the left with its home still a tab: it follows the wheel when things settle, and the group comes then too
+    const tabHome = { home: 'tab', props: true, closed: false, tablet: true, leftWidth: 0, moved: false, legacy: true };
+    r = await wheelIn(false, null, ['left/a:' + PR + ':s', 'left/w'].concat(four.filter(f => !f.includes(PR))), stack({ device: tabHome }));
+    T('old install, wheel on the left, home a tab: nothing moves until things have settled', r.tree('left') === PR + '*|' + VW + '*' && !r.plugin.device.topPlaced, r.tree('left') + ' ' + JSON.stringify(r.plugin.device));
+    r.settle(); await new Promise(res => setTimeout(res, 5));
+    T('and then the group is set up, at this start and not the next', r.tree('left') === TOPS + '|' + VW + '*' && r.tree('right') === 'outline*,tag' && r.plugin.device.topPlaced === true && r.plugin.stored() === 'left', r.tree('left') + ' / ' + r.tree('right') + ' ' + JSON.stringify(r.plugin.device));
+    r.log.length = 0; await r.fire();
+    T('once: the next layout change does nothing', !r.log.length, r.log.join());
+    r = await wheelIn(true, null, ['left', 'left:' + PR + ':s'], { device: tabHome }); r.settle(); await new Promise(res => setTimeout(res, 5)); r.log.length = 0; await r.fire();
+    T('a phone has no group to set up: a layout change does not bring the wheel forward each time', r.plugin.stored() === 'left' && !r.log.length, r.log.join());
     // what you do with it after that stays
     r = await wheelIn(false, null, ['left/w'].concat(four), stack({ device: home })); r.settle(); await r.fire();
     { const t = tabsOf(r, 'left/0'); t.currentTab = 2; t.setDimension(40); const order = t.children.splice(0, 1); t.children.push(order[0]); t.currentTab = 1; r.log.length = 0; await r.again(); r.settle(); await r.fire();

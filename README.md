@@ -17,7 +17,7 @@ It is a file browser, not an editor for notes: a note opens in Obsidian as usual
 
 ## Install
 
-VaultWheel is not in the Community plugins list yet. To install it by hand, download `main.js`, `manifest.json` and `styles.css` from a release into `.obsidian/plugins/vaultwheel/` in your vault,
+Get it from [its page in the Obsidian community directory](https://community.obsidian.md/plugins/vaultwheel) with **Add to Obsidian**. To install it by hand, download `main.js`, `manifest.json` and `styles.css` from a release into `.obsidian/plugins/vaultwheel/` in your vault,
 then enable VaultWheel under Community plugins.
 
 Open it from the disc icon in the ribbon, or the command **VaultWheel: Open the wheel**. It opens in a normal tab. Nothing else in

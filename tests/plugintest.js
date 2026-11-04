@@ -806,6 +806,34 @@ function world(mobile, desktop, fresh) {
     await r.w.app.plugins.disablePlugin(ID);
     T('turned off again: gone', !r.marked().length, r.marked().length + '');
   }
+  // what a store build leaves out: the read of the browser's storage. everyone a store build can meet has none of the old keys, and for
+  // them it must do what the build with the read did, so each kind of start is run through both
+  {
+    const store = main0.split('\n'); let skip = false; const kept = [];
+    for (const line of store) { if (/^\s*\/\/ #if dev\s*$/.test(line)) { skip = true; continue; } if (/^\s*\/\/ #endif\s*$/.test(line)) { skip = false; continue; } if (!skip) kept.push(line); }
+    const code = kept.join('\n');
+    T('a store build has no localStorage left in it', !code.includes('localStorage') && main0.includes('localStorage'));
+    const startOf = async (src, set) => {
+      const w = world(false, true, true); w.store = {}; if (src) w.put(DIR + '/main.js', src); set(w);
+      await w.start();
+      const p = w.current(); return JSON.stringify({ device: p.device, settings: p.settings, stored: w.dev['vaultwheel-device'], data: w.files.get(DIR + '/data.json'), writes: w.dataWrites });
+    };
+    const REC1 = { home: 'left', props: true, closed: false, tablet: false, leftWidth: 400, topPlaced: true };
+    const KINDS = {
+      'a new install': () => { },
+      'a 1.0.x install with its device record': w => { w.dev['vaultwheel-device'] = JSON.stringify(REC1); w.put(DIR + '/data.json', '{"dirs":{},"settings":{"hover":false,"reload":false,"sound":true}}'); },
+      'a 1.0.x record kept from an old install': w => { w.dev['vaultwheel-device'] = JSON.stringify(Object.assign({}, REC1, { moved: true, legacy: true })); w.put(DIR + '/data.json', '{"dirs":{}}'); },
+      'a second device of a 1.0.x install, data.json synced and no record yet': w => w.put(DIR + '/data.json', '{"dirs":{},"settings":{"hover":true,"reload":false,"sound":false}}'),
+      'a data.json with no settings and no record': w => w.put(DIR + '/data.json', '{"dirs":{}}'),
+      'boards.json alone': w => w.put(DIR + '/boards.json', '{}')
+    };
+    for (const [name, set] of Object.entries(KINDS)) {
+      const a = await startOf(null, set), b = await startOf(code, set);
+      T('store build, ' + name + ': the same start as with the read', a === b, a + ' / ' + b);
+    }
+    const got = await startOf(code, w => { w.store['vaultwheel-place'] = 'left'; w.store['vaultwheel-moved'] = '1'; });
+    T('store build: old keys, were they there, are not read', JSON.parse(got).device.home === 'tab' && !JSON.parse(got).device.legacy, got);
+  }
   //RELOAD
 } catch (err) { out.push('FAIL threw :: ' + err.stack); }
 console.log('RESULTS\n' + out.join('\n')); })();

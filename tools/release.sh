@@ -5,8 +5,8 @@
 #   manifest.json: the one at the repo root
 #   styles.css: plugin/styles.css
 # the page is the bridge build with no crying gifs and no scan of any vault. the version defaults to the root manifest's; given,
-# it must agree with the root manifest and versions.json, so a release cannot go out with a wrong number. nothing is published:
-# attaching these to a GitHub release and the store pull request are done by hand, when the owner says so
+# it must agree with the root manifest and versions.json, so a release cannot go out with a wrong number. nothing is published
+# here: a pushed tag has .github/workflows/release.yml run this and make the GitHub release from what it leaves
 set -e
 S=$(cd "$(dirname "$0")/.." && pwd)
 WANT=$(perl -ne 'print $1 if /"version":\s*"([^"]+)"/' "$S/manifest.json")
@@ -48,7 +48,7 @@ gzip -9nc "$T/page.html" > "$T/page.gz"
 # back to what went in, and none of what a store build must not hold
 perl -0777 -e '
 use MIME::Base64;
-my ($main, $page) = @ARGV;
+my ($main, $page, $styles) = @ARGV;
 sub slurp { open(my $f, "<:raw", $_[0]) or die "$_[0]: $!"; local $/; my $d = <$f>; close $f; return $d }
 my $m = slurp($main);
 my ($b) = $m =~ /const VW_PAGE = "([A-Za-z0-9+\/=]+)";\n\z/ or die "no VW_PAGE at the end of main.js\n";
@@ -56,9 +56,11 @@ require IO::Uncompress::Gunzip; my $out; my $gz = decode_base64($b);
 IO::Uncompress::Gunzip::gunzip(\$gz => \$out) or die "the page does not unpack\n";
 $out eq slurp($page) or die "the page does not unpack to what went in\n";
 (my $code = $m) =~ s/\n\/\* Licences\..*\z//s;
-for my $w (qw(disablePlugin enablePlugin loadManifests watchUpdates checkMain vaultwheel.html)) { die "$w is still in the store build\n" if index($code, $w) >= 0; }
+for my $w (qw(disablePlugin enablePlugin loadManifests watchUpdates checkMain vaultwheel.html localStorage sessionStorage)) { die "$w is still in the store build\n" if index($code, $w) >= 0; }
 die "the source main.js has no end line\n" if index($code, "// end of main.js") < 0;
-' "$T/main.js" "$T/page.html"
+my $css = slurp($styles);
+for my $w ("!important", ":has(") { die "$w is in styles.css\n" if index($css, $w) >= 0; }
+' "$T/main.js" "$T/page.html" "$S/plugin/styles.css"
 rm -rf "$O"; mkdir -p "$O"
 cp "$T/main.js" "$O/main.js"; cp "$S/manifest.json" "$O/manifest.json"; cp "$S/plugin/styles.css" "$O/styles.css"
 ls -l "$O"; echo "page $(wc -c < "$T/page.html") bytes, $(wc -c < "$T/page.gz") gzipped"

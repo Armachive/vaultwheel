@@ -8,9 +8,15 @@ const VIEW = 'vaultwheel-view';
 // this device's settings (where the wheel lives, the tablet layout), kept out of data.json since that file syncs. through
 // app.saveLocalStorage they are per vault too: the browser's own storage is shared by every vault on a device
 const DEVICE = 'vaultwheel-device';
-// what an install from before there were settings left in the browser's storage: read once, to carry it over (see loadSettings)
+// what an install from before there were settings left in the browser's storage: read once, to carry it over (see loadSettings).
+// no public build ever wrote these keys, the first one only read them, so a store build has no read: to it they are just not there
 const OLD_KEYS = ['vaultwheel-place', 'vaultwheel-place-2', 'vaultwheel-moved', 'vaultwheel-left-width', 'vaultwheel-tablet-layout'];
-const oldKey = k => { try { return localStorage.getItem(k); } catch (e) { return null; } };
+const oldKey = k => {
+  // #if dev
+  try { return localStorage.getItem(k); } catch (e) { /* no storage */ }
+  // #endif
+  return null;
+};
 // a module only the desktop app has (null on mobile, which has no node)
 const nodeModule = name => { if (!Platform.isDesktopApp || Platform.isMobile) return null; try { return require(name); } catch (e) { return null; } };
 // the left sidebar's width: under the first the wheel is too cramped to start in, the second is what it gets then

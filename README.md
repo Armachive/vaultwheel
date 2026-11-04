@@ -97,7 +97,7 @@ Per device settings stay in this device's app storage, and the others go in the 
 
 ## Known limits
 
-- Turning the plugin off closes its tab, as with any plugin's view. If it has the left sidebar, choose **In a tab** first, so the tabs
+- Turning the plugin off ends its view, as with any plugin's (Obsidian 1.15 leaves a tab that says so). If it has the left sidebar, choose **In a tab** first, so the tabs
   it moved go back. Tabs it did not move are never touched.
 - Saved boards live in `boards.json` in the plugin's folder. A sync that only carries a plugin's usual files will not take them along.
 - The theme and a few view choices are kept in the app's storage, which every vault on a device shares.
@@ -145,7 +145,7 @@ sed -n 's/^const VW_PAGE = "\(.*\)";$/\1/p' main.js | base64 -d | gunzip > page.
 sh tools/build.sh bridge built.html public && cmp page.html built.html
 ```
 
-Each release is built on GitHub from its tag by `.github/workflows/release.yml`, with an attestation for each file: `gh attestation verify main.js --repo Armachive/vaultwheel` checks one. `sh tools/release.sh` in a clean clone of the tag builds the same bytes.
+From 1.0.2 on, each release is built on GitHub from its tag by `.github/workflows/release.yml`, with an attestation for each file: `gh attestation verify main.js --repo Armachive/vaultwheel` checks one. `sh tools/release.sh` in a clean clone of the tag builds the same bytes.
 
 ### libflac.wasm
 

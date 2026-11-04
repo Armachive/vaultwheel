@@ -34,7 +34,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          # (checkout leaves the tag as a plain pointer to the commit, so its message is fetched first. a tag with no message of its own gives the commit's)
+          # (checkout can leave the tag as a plain pointer to the commit, so the tag itself is fetched first. a tag with no message of its own gives the commit's)
           git fetch --force --depth=1 origin "refs/tags/$TAG:refs/tags/$TAG"
           git tag --list "$TAG" --format='%(contents)' > "$RUNNER_TEMP/notes.md"
           gh release create "$TAG" --verify-tag --title "$TAG" --notes-file "$RUNNER_TEMP/notes.md" build/release/main.js build/release/manifest.json build/release/styles.css

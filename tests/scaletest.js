@@ -110,11 +110,16 @@
   let saved=null; try{ saved=JSON.parse(localStorage.getItem('vw.prefs')); }catch(e){}
   T('nothing is saved past the session', !saved || !Object.keys(saved.dirs||{}).length, JSON.stringify(saved));
   T('the bar has no scale meter or saved settings, and keeps the saved boards button', !$('#dScale') && !$('#dSave') && !!$('#bBoards'), '');
-  // a list's card round behind the tube is not drawn, and shows again when the column turns into a mosaic
+  // a list's card round behind the tube is not drawn, and shows again when the column has stops. a scaled column keeps the card
+  // as it is, so that is where it would stay hidden (a mosaic makes its cards again)
   await setU(0); VW.up(); VW.up(); VW.enter('Riko ochre'); VW.enter('Bane Greenhouse'); VW.snap(); await sl(800);
-  VW.spinTo(Math.floor(VW.state().n/2)); await sl(800); VW.snap(); await sl(500);
-  const lst=VW.faces(0), hid=lst.filter(f=>!f.shown).length;
+  // (which are far enough round goes by their heights, so it looks along the folder for a place with one)
+  let lst=[], hid=0;
+  for(let i=0;i<12&&!hid;i++){ VW.spinTo(i*3); await sl(500); VW.snap(); await sl(300); lst=VW.faces(0); hid=lst.filter(f=>!f.shown).length; }
   T('a list keeps its far cards made but not drawn', lst.length>0 && hid>0 && hid<lst.length, hid+' of '+lst.length);
+  await setU(0.45); VW.snap(); await sl(600);
+  const flat=VW.faces(0).filter(f=>f.op>0.01);
+  T('in a scaled column every card is drawn again', flat.length>0 && flat.every(f=>f.shown), flat.filter(f=>!f.shown).length+' of '+flat.length+' hidden');
   await setU(0.7); VW.snap(); await sl(900);
   const tiles=VW.faces(0).filter(f=>f.op>0.01);
   T('in a mosaic every card is drawn again', tiles.length>0 && tiles.every(f=>f.shown), tiles.filter(f=>!f.shown).length+' of '+tiles.length+' hidden');

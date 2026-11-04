@@ -2780,7 +2780,7 @@ function placeWheel(w, dt, now) {
   w.fvNow = fv;
   const blurLen = w.level === 0 && !w.dying && w.spinK === INTRO_K && !reduceMotion.matches ? Math.abs(w.v) * (T.TEXT_H + T.GAP) * 0.006 : 0;
   // a card of a list that has gone round behind the tube is not drawn, and casts nothing (it stays made, ready to come round
-  // again: a list keeps a quarter of its cards there). how far round one can still show is the geometry of a point lifted off the
+  // again: a list keeps a few of its cards there). how far round one can still show is the geometry of a point lifted off the
   // tube, seen past its rim from the camera as it is now, with room for the card's own height and its glow. (a mosaic keeps only
   // those just past the rim already)
   const camA = Math.atan2(camera.position.y, camera.position.z), rimA = Math.acos(Math.min(1, T.R / Math.hypot(camera.position.y, camera.position.z)));

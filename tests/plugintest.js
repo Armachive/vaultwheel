@@ -377,6 +377,18 @@ function world(mobile, desktop, fresh) {
     T('a sidebar wheel you close stays closed', r.plugin.stored() === 'none' && !r.types('left').includes(VW), r.plugin.stored());
     await r.plugin.open();
     T('and comes back there when you ask', r.types('left') === VW && r.plugin.stored() === 'left', r.types('left'));
+    // the pictures' sizes kept between listings: only so many, the oldest going first
+    {
+      const fs = require('fs'), tmp = require('os').tmpdir() + '/vw-size-' + process.pid + '.png', head = Buffer.alloc(24); head.writeUInt32BE(0x89504e47, 0); head.writeUInt32BE(0x49484452, 12); head.writeUInt32BE(40, 16); head.writeUInt32BE(30, 20);
+      fs.writeFileSync(tmp, head);
+      const q = (await freshIn(false, [])).plugin, f = n => ({ path: n, extension: 'png', stat: { mtime: 1, size: 24 } });
+      q.app.vault.adapter.getFullPath = () => tmp; q.sizeMem = new Map();
+      for (let i = 0; i < 20000; i++) q.sizeMem.set('old' + i, { k: '1:24', z: [1, 1] });
+      const got = await q.pictureSizes([f('a.png'), f('b.png'), f('old7')]);
+      T('a picture\'s size is read and remembered', got.size === 3 && got.get([...got.keys()].find(x => x.path === 'a.png'))[0] === 40 && q.sizeMem.has('a.png'), got.size + ' ' + q.sizeMem.size);
+      T('and only so many are kept, the oldest going first', q.sizeMem.size === 20000 && !q.sizeMem.has('old0') && !q.sizeMem.has('old1') && q.sizeMem.has('old2'), String(q.sizeMem.size));
+      fs.unlinkSync(tmp);
+    }
     // the page and the plugin's settings share data.json
     r = await freshIn(false, []); const p = r.plugin, say = m => new Promise(res => p.handle(Object.assign({ vw: 1, id: 1 }, m), { postMessage: res }));
     await p.saveSetting('hover', true);

@@ -95,6 +95,8 @@ const headSize = buf => {
 };
 // how much of a picture is read for its size, and how long a folder's listing waits for the sizes (the rest show as guesses)
 const HEAD_BYTES = 128 * 1024, HEAD_MORE = 2 * 1024 * 1024, HEAD_WAIT = 4000;
+// how many pictures' sizes are remembered, the oldest going first: a few MB at most, and enough for any folder one goes back to
+const SIZE_KEEP = 20000;
 const HEADED = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp']);
 const IMG = new Set(['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp', 'avif', 'svg']);
 const MEDIA = new Set(['mp3', 'wav', 'ogg', 'opus', 'flac', 'm4a', 'aac', 'mp4', 'm4v', 'webm', 'mov', 'mkv']);
@@ -1449,7 +1451,10 @@ module.exports = class VaultWheel extends Plugin {
         let z = headSize(await read(HEAD_BYTES));
         // (a big exif block or colour profile can push a jpeg's frame header past the first read)
         if (!z && (f.stat.size || 0) > HEAD_BYTES && /^jpe?g$/i.test(f.extension)) z = headSize(await read(HEAD_MORE));
-        if (z && z[0] > 0 && z[1] > 0) { out.set(f, z); mem.set(f.path, { k: f.stat.mtime + ':' + f.stat.size, z }); }
+        if (z && z[0] > 0 && z[1] > 0) {
+          out.set(f, z); mem.delete(f.path); mem.set(f.path, { k: f.stat.mtime + ':' + f.stat.size, z });
+          while (mem.size > SIZE_KEEP) mem.delete(mem.keys().next().value);
+        }
       } finally { await fh.close(); }
     };
     const worker = async () => { while (todo.length && Date.now() < until) { const f = todo.pop(); try { await one(f); } catch (e) { } } };

@@ -8,6 +8,7 @@ const tick = () => new Promise(r => setImmediate(r));
 // (the owner's state unless said otherwise: a data.json from before the settings. fresh: a new install, with nothing there)
 function world(mobile, desktop, fresh) {
   const w = { files: new Map(), times: new Map(), writes: [], notices: [], calls: [], intervals: new Set(), leaves: [], classes: new Set(mobile ? ['is-phone'] : []), classLog: [], watchers: [], clock: 1000, dev: {}, dataWrites: 0 };
+  w.domEvents = [];
   w.put = (p, text) => { w.files.set(p, text); w.times.set(p, ++w.clock); };
   w.put(DIR + '/main.js', main0); w.put(DIR + '/manifest.json', JSON.stringify({ id: ID })); w.put(DIR + '/vaultwheel.html', '<page>');
   if (!fresh) w.put(DIR + '/data.json', '{"dirs":{}}');
@@ -20,18 +21,18 @@ function world(mobile, desktop, fresh) {
   class Plugin {
     constructor(app, manifest) { this.app = app; this.manifest = manifest; this.ends = []; this.mine = []; }
     registerInterval(i) { this.mine.push(i); w.intervals.add(i); return i; }
-    registerEvent() { } registerDomEvent() { } registerView(t, f) { this.factory = f; } addRibbonIcon() { } addCommand(c) { (this.commands = this.commands || {})[c.id] = c; } addSettingTab(t) { this.tab = t; }
+    registerEvent() { } registerDomEvent(el, t, f, o) { w.domEvents.push({ el, t, f, o, owner: this }); } registerView(t, f) { this.factory = f; } addRibbonIcon() { } addCommand(c) { (this.commands = this.commands || {})[c.id] = c; } addSettingTab(t) { this.tab = t; }
     async loadData() { return w.files.has(DIR + '/data.json') ? JSON.parse(w.files.get(DIR + '/data.json')) : null; }
     async saveData(d) { w.dataWrites++; w.put(DIR + '/data.json', JSON.stringify(d)); }
-    unload() { this.onunload(); for (const i of this.mine) w.intervals.delete(i); }
+    unload() { this.onunload(); for (const i of this.mine) w.intervals.delete(i); w.domEvents = w.domEvents.filter(x => x.owner !== this); }
   }
   class ItemView { constructor() { } load() { throw new Error('a view does not override load: it is Obsidian\'s'); } } class Modal { } class Component { } class TFile { } class TFolder { } class PluginSettingTab { } class Setting { }
   class Notice { constructor(t) { w.notices.push(t); } }
   const Platform = { isMobile: !!mobile, isDesktopApp: !!desktop, isTablet: false, isPhone: !!mobile };
   w.Platform = Platform;
   const obsidian = { Plugin, PluginSettingTab, Setting, ItemView, Modal, Component, TFile, TFolder, Notice, Platform, MarkdownRenderer: {}, getLinkpath: p => p, normalizePath: p => p.replace(/\/+/g, '/') };
-  const body = { hasClass: c => w.classes.has(c), addClass: c => { w.classes.add(c); w.classLog.push('+' + c); }, removeClass: c => { w.classes.delete(c); w.classLog.push('-' + c); }, toggleClass: (c, on) => { if (on) body.addClass(c); else body.removeClass(c); } };
-  const G = { setInterval: f => ({ f }), setTimeout: () => 0, addEventListener() { }, removeEventListener() { }, matchMedia: () => ({ matches: false }), dispatchEvent() { } };
+  const body = { classList: { toggle: (c, on) => { if (on) w.classes.add(c); else w.classes.delete(c); }, remove: c => { w.classes.delete(c); } }, hasClass: c => w.classes.has(c), addClass: c => { w.classes.add(c); w.classLog.push('+' + c); }, removeClass: c => { w.classes.delete(c); w.classLog.push('-' + c); }, toggleClass: (c, on) => { if (on) body.addClass(c); else body.removeClass(c); } };
+  const G = { document: { body }, setInterval: f => ({ f }), setTimeout: (f, ms) => { if (w.timers) w.timers.push(f); return 0; }, addEventListener() { }, removeEventListener() { }, matchMedia: () => ({ matches: false }), dispatchEvent() { } };
   const app = {
     loadLocalStorage: k => (k in w.dev ? JSON.parse(w.dev[k]) : null), saveLocalStorage: (k, v) => { w.dev[k] = JSON.stringify(v); },
     vault: { adapter, configDir: '.obsidian', on() { } },
@@ -833,6 +834,57 @@ function world(mobile, desktop, fresh) {
     }
     const got = await startOf(code, w => { w.store['vaultwheel-place'] = 'left'; w.store['vaultwheel-moved'] = '1'; });
     T('store build: old keys, were they there, are not read', JSON.parse(got).device.home === 'tab' && !JSON.parse(got).device.legacy, got);
+  }
+  // the page lets the pointer through while the right or middle button, pressed out in Obsidian, is held: the logic, on a fake window.
+  // what it is for, a canvas pan released over the wheel, can only be seen in real Obsidian
+  {
+    const CLS = 'vaultwheel-pass';
+    const w = world(false, true, true); w.timers = [];
+    let opened = null; w.app.workspace.on = (e, f) => { if (e === 'window-open') opened = f; };
+    const fakeWin = () => { const c = new Set(), x = { closed: false, timers: [], setTimeout: f => { x.timers.push(f); return 0; }, document: { body: { classList: { toggle: (k, on) => { if (on) c.add(k); else c.delete(k); }, remove: k => c.delete(k) } } }, on: () => c.has(CLS) }; return x; };
+    const floating = fakeWin(); w.app.workspace.floatingSplit = { children: [{ win: floating }, {}] };
+    await w.start();
+    const main = w.current(), G = [...main.pressWins][0];
+    const fire = (win, t, e = {}) => { for (const d of w.domEvents.filter(x => x.el === win && x.t === t)) d.f(Object.assign({ type: t }, e)); };
+    const on = () => w.classes.has(CLS), run = () => { for (const f of w.timers.splice(0)) f(); };
+    T('every window is listened on in the capture phase, but for blur', ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'pointermove', 'pointercancel'].every(t => w.domEvents.some(d => d.el === G && d.t === t && d.o === true)) && w.domEvents.some(d => d.el === G && d.t === 'blur' && !d.o));
+    for (const [n, button] of [['middle', 1], ['right', 2]]) {
+      fire(G, 'pointerdown', { button, buttons: button === 1 ? 4 : 2 });
+      T('a ' + n + ' press out in Obsidian lets the pointer through the page', on());
+      fire(G, 'pointermove', { buttons: button === 1 ? 4 : 2 });
+      T('and it stays so while the button is held', on());
+      fire(G, 'pointerup', { button, buttons: 0 }); fire(G, 'mouseup', { button, buttons: 0 });
+      T('the release does not end it inside its own event (a context menu comes straight after, on Windows)', on());
+      run();
+      T('and it has ended just after', !on());
+    }
+    fire(G, 'pointerdown', { button: 0, buttons: 1 });
+    T('a left press is left as it is', !on());
+    fire(G, 'mousedown', { button: 2, buttons: 3 });
+    T('a right press added to a held left one fires mousedown alone, and counts', on());
+    fire(G, 'mouseup', { button: 2, buttons: 1 }); run();
+    T('with the left still held it goes on', on());
+    fire(G, 'pointerup', { button: 0, buttons: 0 }); run();
+    T('all up, it ends', !on());
+    fire(G, 'pointerdown', { button: 1, buttons: 4 }); fire(G, 'pointermove', { buttons: 0 });
+    T('a release nobody heard (a system menu took it): the next move with nothing held ends it, at once', !on());
+    fire(G, 'pointerdown', { button: 1, buttons: 4 }); fire(G, 'pointercancel', { buttons: 0 });
+    T('a cancelled pointer ends it', !on());
+    fire(G, 'pointerdown', { button: 2, buttons: 2 }); fire(G, 'blur');
+    T('the window losing focus ends it', !on());
+    fire(G, 'pointerdown', { button: 1, buttons: 4 }); fire(G, 'pointerup', { button: 1, buttons: 0 }); fire(G, 'pointerdown', { button: 1, buttons: 4 }); run();
+    T('a new press straight after a release is not ended by the old release', on());
+    fire(G, 'pointerup', { button: 1, buttons: 0 }); run();
+    T('a window open at load is listened on', w.domEvents.some(d => d.el === floating && d.t === 'pointerdown'));
+    fire(floating, 'pointerdown', { button: 1, buttons: 4 });
+    T('and has the class of its own', floating.on() && !on());
+    const late = fakeWin(); opened({}, late); opened({}, late);
+    T('a window opened later is listened on, once', w.domEvents.filter(d => d.el === late && d.t === 'pointerdown').length === 1);
+    fire(late, 'pointerdown', { button: 2, buttons: 2 }); fire(G, 'pointerdown', { button: 2, buttons: 2 });
+    late.closed = true;
+    await w.app.plugins.disablePlugin(ID);
+    T('the plugin going takes the class off every window', !on() && !floating.on() && !late.on());
+    T('and its listeners with it', !w.domEvents.length, String(w.domEvents.length));
   }
   //RELOAD
 } catch (err) { out.push('FAIL threw :: ' + err.stack); }

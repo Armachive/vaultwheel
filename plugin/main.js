@@ -27,6 +27,8 @@ const TOP = ['file-properties', 'all-properties', 'backlink', 'outgoing-link'], 
 const typeOf = l => { const s = l.getViewState ? l.getViewState() : null; return s ? s.type : ''; };
 // a wheel that is the only tab of a group in the left sidebar, and the class its group gets for that (see markAlone)
 const ALONE_WHEEL = '.mod-left-split .workspace-tabs > .workspace-tab-container > .workspace-leaf:only-child > .workspace-leaf-content[data-type="' + VIEW + '"]', ALONE = 'vaultwheel-alone';
+// the class that lets the pointer through the wheel's page while a button pressed out in Obsidian is held (see watchPresses)
+const THROUGH = 'vaultwheel-pass';
 const THUMB_PX = 360, THUMB_KEEP = 500, THUMB_MAX_PIXELS = 120e6, THUMB_MAX_BYTES = 150 * 1024 * 1024;
 const BINARY_MAX = 400 * 1024 * 1024;
 // the requests that change something on disk (see handle)
@@ -454,6 +456,9 @@ module.exports = class VaultWheel extends Plugin {
     // back can go without asking again (and nothing else can skip the question)
     // (an entry is used once, lapses after ten minutes, and goes when that file is renamed or deleted)
     this.undoable = new Map();
+    this.pressWins = new Set(); this.watchPresses(window);
+    for (const w of (this.app.workspace.floatingSplit && this.app.workspace.floatingSplit.children) || []) if (w.win) this.watchPresses(w.win);
+    this.registerEvent(this.app.workspace.on('window-open', (ww, w) => this.watchPresses(w)));
     this.registerView(VIEW, leaf => new WheelView(leaf, this));
     this.addRibbonIcon('disc', 'Open VaultWheel', () => this.open());
     this.addSettingTab(new WheelSettings(this.app, this));
@@ -755,6 +760,7 @@ module.exports = class VaultWheel extends Plugin {
   // #endif
   onunload() {
     this.gone = true; this.markAlone();
+    for (const w of this.pressWins) { try { w.document.body.classList.remove(THROUGH); } catch (e) { /* a window already closed */ } }
     // (loading itself again the new plugin takes the tablet layout over as it is, so the screen does not flash the phone's)
     if (!this.reloading) this.tabletLayout(false);
     else if (this.tabletWatch) { this.tabletWatch.disconnect(); this.tabletWatch = null; }
@@ -790,6 +796,28 @@ module.exports = class VaultWheel extends Plugin {
     if (!this.gone) for (const el of document.querySelectorAll(ALONE_WHEEL)) groups.add(el.closest('.workspace-tabs'));
     for (const g of document.querySelectorAll('.' + ALONE)) if (!groups.has(g)) g.classList.remove(ALONE);
     for (const g of groups) g.classList.add(ALONE);
+  }
+  // a press out in Obsidian does not keep the pointer: over the wheel's page the moves and the release go to the page, so a drag of
+  // Obsidian's (the canvas pans with the right or middle button) never hears the release and stays on the pointer. while one of those
+  // two, pressed out here, is held, the page lets the pointer through (styles.css). a press in the page never comes here, and any move
+  // with nothing held ends it, so the wheel cannot be left out of reach
+  watchPresses(win) {
+    if (this.pressWins.has(win)) return;
+    this.pressWins.add(win);
+    let held = false;
+    const through = on => { held = on; win.document.body.classList.toggle(THROUGH, on); };
+    // (mousedown too: a button added to one already held fires no pointerdown)
+    const press = e => { if (e.button === 1 || e.button === 2) through(true); };
+    // (it goes after the release's own event: on Windows the context menu comes straight after the mouseup, and must not land in the page)
+    const release = e => { if (!held || e.buttons) return; held = false; win.setTimeout(() => { if (!held) through(false); }, 0); };
+    const move = e => { if (held && !e.buttons) through(false); };
+    const end = () => through(false);
+    for (const t of ['pointerdown', 'mousedown']) this.registerDomEvent(win, t, press, true);
+    for (const t of ['pointerup', 'mouseup']) this.registerDomEvent(win, t, release, true);
+    this.registerDomEvent(win, 'pointermove', move, true);
+    this.registerDomEvent(win, 'pointercancel', end, true);
+    // (not in the capture phase: there it would hear every element losing focus as well)
+    this.registerDomEvent(win, 'blur', end);
   }
   // a new wheel in a leaf, whole: its view open and its page loaded. false if not, and the leaf is left for the caller
   async wheelInto(leaf, state) {

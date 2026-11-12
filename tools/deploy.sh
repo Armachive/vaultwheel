@@ -2,7 +2,7 @@
 # tools/deploy.sh "<what changed>"   one command puts the current source everywhere VaultWheel runs. run it from anywhere:
 #   1. builds the three versions from src/ (snapshot for the claude.ai preview, live for the site, bridge for the plugin)
 #      into build/ (not in git)
-#   2. backs up what is live now into the site's _before_vaultwheel/<time>/ folder
+#   2. backs up what is live now into BACKUP_DIR/<time>/ (from deploy.env), or the site's _before_vaultwheel/<time>/ folder
 #   3. copies the site page into the vault-tree app (and site/server.py, restarting the container, only when it changed)
 #   4. copies the plugin into the vault's .obsidian/plugins/vaultwheel/ (Syncthing carries it to every device; an open
 #      VaultWheel view swaps a new page in by itself, and the plugin loads a new main.js by itself)
@@ -27,7 +27,7 @@ sh $S/tools/build.sh snapshot $S/build/vaultwheel-final.html
 sh $S/tools/build.sh live $S/build/live/index.html
 sh $S/tools/build.sh bridge $S/build/plugin/vaultwheel.html
 
-B=$APP/_before_vaultwheel/$TS; mkdir -p "$B/plugin"
+B=${BACKUP_DIR:-$APP/_before_vaultwheel}/$TS; mkdir -p "$B/plugin"
 cp -p "$APP/index.html" "$APP/server.py" "$B/"
 cp -p "$PLUG/main.js" "$PLUG/manifest.json" "$PLUG/styles.css" "$PLUG/vaultwheel.html" "$B/plugin/"
 echo "backed up to $B"

@@ -409,6 +409,11 @@ class WheelSettings extends PluginSettingTab {
       .addDropdown(c => c.addOptions({ tab: 'In a tab', left: 'Left sidebar, alone', 'left-props': 'Left sidebar, under Properties', right: 'Right sidebar' })
         .setValue(d.home === 'left' ? (d.props ? 'left-props' : 'left') : d.home)
         .onChange(v => p.chooseHome(v).catch(e => { console.error('VaultWheel: moving the wheel', e); new Notice('The wheel could not move there.'); })));
+    if (Platform.isMobile && d.home === 'left') {
+      new Setting(el).setName('Beside the wheel in the left sidebar').setDesc('On this device. These stay in the left sidebar with the wheel, after it, and one that is not open opens there. Everything else there goes to the right sidebar. Turn one off to let it go.').setHeading();
+      const on = new Set(d.drawer || []);
+      for (const c of p.drawerChoices()) new Setting(el).setName(c.name).addToggle(t => t.setValue(on.has(c.type)).onChange(v => p.setDrawer(c.type, v).catch(e => console.error('VaultWheel: arranging the left sidebar', e))));
+    }
     if (Platform.isMobile) new Setting(el).setName('Tablet layout on a phone').setDesc('On this device. Holds Obsidian in its tablet layout on a phone screen: tabs, splits and the ribbon. This is not an Obsidian feature and a future version of Obsidian may stop it working.')
       .addToggle(c => c.setValue(!!d.tablet).onChange(v => p.setTablet(v)));
     // (data.json syncs to phones too, where this has no effect: they have no stacked groups)
@@ -570,6 +575,34 @@ module.exports = class VaultWheel extends Plugin {
     await this.arrangeRight(false, true);
   }
   setTablet(on) { this.device.tablet = on; this.saveDevice(); this.tabletLayout(on); }
+  // the views a phone or tablet's left sidebar can keep beside the wheel: every view Obsidian and its plugins have registered,
+  // but one that shows a file, an empty tab and the wheel, each by the name its core plugin or plugin goes by
+  drawerChoices() {
+    const reg = this.app.viewRegistry || {}, files = new Set(Object.values(reg.typeByExtension || {})), seen = new Map();
+    const core = Object.values((this.app.internalPlugins && this.app.internalPlugins.plugins) || {}), manifests = (this.app.plugins && this.app.plugins.manifests) || {};
+    const out = [];
+    for (const t of Object.keys(reg.viewByType || {})) {
+      if (t === VIEW || t === 'empty' || files.has(t)) continue;
+      const owner = core.find(p => p.views && Object.prototype.hasOwnProperty.call(p.views, t) && p.instance && p.instance.name);
+      let name = owner ? owner.instance.name : manifests[t] && manifests[t].name ? manifests[t].name : t.charAt(0).toUpperCase() + t.slice(1).replace(/[-_]/g, ' ');
+      // (a core plugin with two views, the graph's own and the local one, has them told apart)
+      if (owner && Object.keys(owner.views).length > 1 && Object.keys(owner.views)[0] !== t) name += ' (' + t.replace(/[-_]/g, ' ') + ')';
+      out.push({ type: t, name });
+    }
+    return out.sort((a, b) => a.name.localeCompare(b.name));
+  }
+  // the chosen ones, in the order the setting lists them (one no longer registered keeps its place at the end)
+  drawerTypes() {
+    const want = this.device.drawer || []; if (!Platform.isMobile || !want.length) return [];
+    const order = this.drawerChoices().map(c => c.type);
+    return [...want].sort((a, b) => (order.includes(a) ? order.indexOf(a) : 1e9) - (order.includes(b) ? order.indexOf(b) : 1e9));
+  }
+  // one turned on or off in the setting: carried out now, if the wheel lives in the left sidebar (a choice here ends an old install's ways)
+  async setDrawer(type, on) {
+    const d = this.device; d.drawer = (d.drawer || []).filter(t => t !== type); if (on) d.drawer.push(type);
+    d.legacy = false; this.drawerFailed = null; this.saveDevice();
+    if (d.home === 'left') { d.closed = false; await this.toSidebar('left', false); }
+  }
   // the setting: the wheel goes there now, if it is open or the place is a sidebar. a choice here ends an old install's ways
   async chooseHome(v) {
     const d = this.device; d.legacy = false; d.closed = false; d.topPlaced = false; d.topGone = []; this.topStuck = null;
@@ -587,7 +620,7 @@ module.exports = class VaultWheel extends Plugin {
     const wk = this.app.workspace, d = this.device, was = d.topWas || {};
     // (a top group panel goes back to where it was before the left sidebar choice brought it over, if it did)
     const types = (d.movedRight || []).filter(t => !TOP.includes(t) || !was[t] || was[t] === 'left');
-    if ((!types.length && !Object.keys(was).length && !d.rightShut) || this.placing || !wk.getLeftLeaf) return;
+    if ((!types.length && !Object.keys(was).length && !d.rightShut && !(d.drawerMade || []).length && !(d.drawerFrom || []).length) || this.placing || !wk.getLeftLeaf) return;
     const move = async (l, make) => {
       let to = null;
       try {
@@ -611,7 +644,10 @@ module.exports = class VaultWheel extends Plugin {
       }
       // (a right sidebar opened to show the tabs closes again, unless the wheel lives in it now)
       if (d.rightShut && d.home !== 'right' && wk.rightSplit.collapse) { wk.rightSplit.collapse(); d.rightShut = false; }
-      d.movedRight = []; d.topWas = undefined; this.saveDevice();
+      // (in a phone's drawer, the views opened to keep the wheel company go with it, and the ones that came from the right go back)
+      for (const t of d.drawerMade || []) for (const l of wk.getLeavesOfType(t).filter(x => x.getRoot() === wk.leftSplit)) l.detach();
+      for (const t of d.drawerFrom || []) { const l = wk.getLeavesOfType(t).find(x => x.getRoot() === wk.leftSplit); if (l) await move(l, wk.getRightLeaf); }
+      d.movedRight = []; d.topWas = undefined; d.drawerMade = []; d.drawerFrom = []; this.saveDevice();
     } finally { this.placing = false; }
   }
   sendThemes(win) { if (this.themes && win) win.postMessage({ vw: 1, t: 'themeTokens', themes: this.themes }, '*'); }
@@ -846,7 +882,7 @@ module.exports = class VaultWheel extends Plugin {
         }
       }
       for (const l of all) if (l !== leaf) l.detach();
-      if (side === 'left') { await this.clearLeft(leaf, reveal); if (this.device.props) await this.topTabs(leaf, fresh); }
+      if (side === 'left') { await this.clearLeft(leaf, reveal); if (this.device.props) await this.topTabs(leaf, fresh); await this.fillDrawer(leaf); }
       if (leaf.parent && leaf.parent.selectTab) leaf.parent.selectTab(leaf);
       // (a sidebar the layout lost, or one asked for: open, with room. one you collapsed yourself stays collapsed at startup)
       if (reveal || made) this.roomIn(split, side);
@@ -867,11 +903,47 @@ module.exports = class VaultWheel extends Plugin {
     const want = w >= LEFT_MIN ? w : split.size < LEFT_MIN ? LEFT_WIDE : split.size;
     if (want !== split.size) { split.setSize(want); if (this.app.workspace.requestSaveLayout) this.app.workspace.requestSaveLayout(); }
   }
+  // a phone or tablet's left sidebar: the wheel first, then the views chosen to stay beside it (drawerTypes), then All properties
+  // if it stays too. one chosen and not there comes over from the right sidebar, or opens there new, at the end (one that cannot
+  // is quietly left out, and not tried again until the setting changes); one in the wrong place is opened again in its place and
+  // only then closed where it was. the wheel itself never moves: its page would load again. what came and what was made is
+  // remembered, so giving the sidebar back puts it right again
+  async fillDrawer(wheel) {
+    const wk = this.app.workspace, d = this.device, drawer = wheel.parent, want = this.drawerTypes();
+    if (!Platform.isMobile || !want.length || !drawer || drawer !== wk.leftSplit || !wk.getLeftLeaf) return;
+    const reg = this.app.viewRegistry, failed = this.drawerFailed = this.drawerFailed || new Set();
+    const open = async (s, how) => {
+      let to = null;
+      try {
+        if (reg && reg.getViewCreatorByType && !reg.getViewCreatorByType(s.type)) throw new Error('no such view');
+        to = wk.getLeftLeaf(false);
+        await to.setViewState(Object.assign({}, s, { active: false }));
+        if (typeOf(to) !== s.type) throw new Error('it came out as ' + typeOf(to));
+        // (one that the wheel sent right is simply back where it was; one that was always on the right goes back there with the rest)
+        if (how === 'made') d.drawerMade = [...new Set((d.drawerMade || []).concat(s.type))];
+        else if (how === 'came' && (d.movedRight || []).includes(s.type)) d.movedRight = d.movedRight.filter(t => t !== s.type);
+        else if (how === 'came') d.drawerFrom = [...new Set((d.drawerFrom || []).concat(s.type))];
+        return to;
+      } catch (e) { if (to) { try { to.detach(); } catch (e2) { /* it stays empty */ } } failed.add(s.type); return null; }
+    };
+    for (const t of want) {
+      if (failed.has(t) || drawer.children.some(l => typeOf(l) === t)) continue;
+      const there = wk.getLeavesOfType(t).find(l => l.getRoot() === wk.rightSplit);
+      if (!there) { await open({ type: t }, 'made'); continue; }
+      if (await open(there.getViewState(), 'came')) there.detach();
+    }
+    const rest = (d.props ? [PROPS] : []).filter(t => !want.includes(t)), order = [wheel];
+    for (const t of want.concat(rest)) { const l = drawer.children.find(x => typeOf(x) === t); if (l) order.push(l); }
+    const now = drawer.children.filter(l => order.includes(l));
+    if (now.every((l, i) => l === order[i])) { this.saveDevice(); return; }
+    for (const l of order.slice(1)) { const to = await open(l.getViewState()); if (to) l.detach(); }
+    this.saveDevice();
+  }
   // the left sidebar holds the wheel and its top group: everything else there goes to the right sidebar with its state.
   // nothing is ever lost: a view is only closed here once its copy is open there, and one that will not move stays (and is
-  // not tried again). a mobile drawer has no stacked groups: one All properties stays there as a tab
+  // not tried again). a mobile drawer has no stacked groups: All properties and the views chosen for it stay there as tabs
   besideWheel(wheel) {
-    const wk = this.app.workspace, others = [], d = this.device, keep = !d.props ? [] : Platform.isMobile ? [PROPS] : TOP;
+    const wk = this.app.workspace, others = [], d = this.device, keep = Platform.isMobile ? (d.props ? [PROPS] : []).concat(d.drawer || []) : !d.props ? [] : TOP;
     const top = d.props && !Platform.isMobile ? this.topGroup(wheel) : null, here = new Set(top ? top.children.map(typeOf) : []);
     if (wk.iterateAllLeaves && wk.getRightLeaf) wk.iterateAllLeaves(l => {
       if (l === wheel || l.getRoot() !== wk.leftSplit || (this.stuck && this.stuck.has(l))) return;

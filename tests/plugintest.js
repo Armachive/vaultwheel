@@ -204,6 +204,8 @@ function world(mobile, desktop, fresh) {
       if (opts.oldNone) delete w.store['vaultwheel-place-2'];
       if (opts.store) Object.assign(w.store, opts.store);
       const left = { n: 'left', size: opts.size || 300, collapsed: !!opts.collapsed, setSize(s) { this.size = s; log.push('size ' + s); }, expand() { this.collapsed = false; log.push('expand left'); } };
+      // (a phone's drawer: its leaves are its own children, no groups)
+      if (opts.drawer) Object.assign(left, { children: [], currentTab: 0, selectTab(l) { this.currentTab = this.children.indexOf(l); log.push('shown left'); } });
       const right = { n: 'right', collapsed: !!opts.rightShut, expand() { this.collapsed = false; log.push('expand right'); } }, main = { n: 'main' }, log = [], leaves = [];
       const roots = { left, right, main }, named = {};
       if (opts.device) w.dev['vaultwheel-device'] = JSON.stringify(opts.device);
@@ -217,21 +219,22 @@ function world(mobile, desktop, fresh) {
       if (opts.stack) for (const x of [left, right, main]) x.children = [];
       const views = { getViewCreatorByType: t => (opts.noView || []).includes(t) ? undefined : () => { }, getTypeByExtension: e => ({ base: 'bases', md: 'markdown' })[e] };
       const leaf = (r, type, state, parent, at) => {
-        const g = parent || groupFor(r);
+        const g = parent || (opts.drawer && r === left ? left : groupFor(r));
         const l = { root: r, type, state, getRoot: () => r, parent: g, getViewState: () => ({ type: l.type, state: l.state }),
           view: { getViewType: () => l.type, frame: {} },
           setViewState: async s => { if (s.type === 'bad' || (s.type === 'all-properties' && opts.propsFail) || (s.type === VW && opts.wheelFails)) { if (s.type === VW) l.view.frame = null; l.type = 'empty'; return; } log.push('made ' + r.n + ' ' + s.type); l.type = s.type; l.state = s.state; },
           openFile: async (f, o) => { if (opts.openFails) return; log.push('opened ' + r.n + ' ' + f.path); l.type = views.getTypeByExtension(f.extension); l.state = Object.assign({}, o.state, { file: f.path }); },
           detach() {
             log.push('gone ' + r.n + ' ' + l.type); leaves.splice(leaves.indexOf(l), 1);
+            if (opts.drawer && g === left) { const n = left.children.indexOf(l); if (n >= 0) left.children.splice(n, 1); return; }
             if (!opts.stack) return;
             const n = g.children.indexOf(l), cur = g.children[g.currentTab]; g.children.splice(n, 1);
             if (!g.children.length) r.children.splice(r.children.indexOf(g), 1); else g.currentTab = n === g.currentTab ? Math.min(n, g.children.length - 1) : g.children.indexOf(cur);
           } };
-        if (opts.stack) g.children.splice(at === undefined ? g.children.length : at, 0, l);
+        if (opts.stack || (opts.drawer && g === left)) g.children.splice(at === undefined ? g.children.length : at, 0, l);
         return l;
       };
-      const build = list => { for (const f of [].concat(list || [])) { const [where, type, st] = f.split(':'), [n, name] = where.split('/'), x = roots[n], state = st && st.includes('=') ? Object.fromEntries(st.split(',').map(p => p.split('='))) : st; const l = leaf(x, type === undefined ? VW : type, state, groupFor(x, name)); if ((opts.linked || []).includes(l.type)) l.group = 'g'; leaves.push(l); } };
+      const build = list => { for (const f of [].concat(list || [])) { const [where, type, st] = f.split(':'), [n, name] = where.split('/'), x = roots[n], state = st && st.includes('=') ? Object.fromEntries(st.split(',').map(p => p.split('='))) : st; const l = leaf(x, type === undefined ? VW : type, state, opts.drawer && x === left ? left : groupFor(x, name)); if ((opts.linked || []).includes(l.type)) l.group = 'g'; leaves.push(l); } };
       build(first);
       const make = r => () => { const l = opts.stack ? leaf(r, 'empty', undefined, r.children[0] || tabs(r)) : leaf(r, 'empty'); leaves.push(l); return l; };
       const on = {};
@@ -242,6 +245,7 @@ function world(mobile, desktop, fresh) {
         w.app.viewRegistry = views;
         w.app.vault.getAbstractFileByPath = p => (opts.files || []).includes(p) ? Object.assign(new w.obsidian.TFile(), { path: p, extension: p.split('.').pop(), stat: {} }) : null;
       }
+      if (opts.drawer) { w.app.viewRegistry = Object.assign({}, views, opts.registry || {}); w.app.internalPlugins = { plugins: opts.core || {} }; Object.assign(w.app.plugins.manifests, opts.manifests || {}); }
       Object.assign(w.app.workspace, { leftSplit: left, rightSplit: right, getLeftLeaf: make(left), getRightLeaf: make(right), getLeaf: () => make(main)(), getLeavesOfType: t => leaves.filter(l => l.type === t), iterateAllLeaves: f => [...leaves].forEach(f), revealLeaf: async () => log.push('revealed'), on: (e, f) => { on[e] = f; } });
       await w.start(); await new Promise(r => setTimeout(r, 5));
       const types = r => leaves.filter(l => l.root === roots[r]).map(l => l.type + (l.state ? ':' + l.state : '')).join();
@@ -370,6 +374,52 @@ function world(mobile, desktop, fresh) {
     T('and has no reason to write them', r.w.dataWrites === 0, String(r.w.dataWrites));
     r = await wheelIn(false, null, null, { fresh: true, data: null, boards: true });
     T('boards.json alone is an old install', r.plugin.device.legacy === true && r.plugin.settings.reload === true, JSON.stringify(r.plugin.device));
+    // a phone's left drawer: the views chosen in the setting stay beside the wheel, in the setting's order, one missing comes or opens there,
+    // and giving the sidebar back puts it all right again
+    {
+      const VW = 'vaultwheel-view', HG = 'hex-graph';
+      const registry = { viewByType: Object.fromEntries([VW, 'file-explorer', 'graph', 'localgraph', 'search', 'bookmarks', 'all-properties', 'file-properties', HG, 'markdown', 'canvas', 'empty', 'tag'].map(t => [t, () => { }])), typeByExtension: { md: 'markdown', canvas: 'canvas' } };
+      const core = { 'file-explorer': { views: { 'file-explorer': 1 }, instance: { name: 'Files' } }, graph: { views: { graph: 1, localgraph: 1 }, instance: { name: 'Graph view' } }, search: { views: { search: 1 }, instance: { name: 'Search' } },
+        bookmarks: { views: { bookmarks: 1 }, instance: { name: 'Bookmarks' } }, properties: { views: { 'all-properties': 1, 'file-properties': 1 }, instance: { name: 'Properties view' } }, 'tag-pane': { views: { tag: 1 }, instance: { name: 'Tags view' } } };
+      const phone = (first, drawer, more = {}) => wheelIn(true, 'left', first, Object.assign({ drawer: true, registry, core, manifests: { [HG]: { name: 'Hex Graph' } }, device: Object.assign({ home: 'left', props: false, closed: false, tablet: false }, drawer ? { drawer } : {}) }, more));
+      const kids = r => r.left.children.map(l => l.type + (l.state && typeof l.state === 'string' ? ':' + l.state : '')).join();
+      let r = await phone(['left:empty'], null);
+      const names = r.plugin.drawerChoices().map(c => c.name).join(', ');
+      T('the choices are the registered views but files, empty and the wheel, by their plugins\' names, sorted', names === 'Bookmarks, Files, Graph view, Graph view (localgraph), Hex Graph, Properties view, Properties view (file properties), Search, Tags view', names);
+      T('none chosen: as it was, the wheel alone and nothing else made', kids(r) === VW && !r.log.some(x => /made left (?!vaultwheel)/.test(x)), kids(r) + ' / ' + r.log.join());
+      // the owner's phone: the drawer holds an empty tab, a graph in the main area, Files was sent right by the old ways
+      r = await phone(['left:empty', 'main:graph', 'right:file-explorer:a', 'right:outline'], [HG, 'file-explorer', 'graph']);
+      T('chosen: the wheel first, then Files, Graph view and Hex Graph, the order the setting lists them, and no empty tab', kids(r) === [VW, 'file-explorer:a', 'graph', HG].join(), kids(r));
+      T('Files came back from the right with its state, the graph in the main area stayed, the outline stayed right', r.types('right') === 'outline' && r.types('main') === 'graph', r.types('right') + ' / ' + r.types('main'));
+      T('the wheel is the tab showing', r.left.currentTab === 0, String(r.left.currentTab));
+      T('what came and what was made is remembered', JSON.stringify(r.plugin.device.drawerMade) === JSON.stringify(['graph', HG]) && JSON.stringify(r.plugin.device.drawerFrom) === JSON.stringify(['file-explorer']), JSON.stringify(r.plugin.device));
+      r.log.length = 0; await r.again();
+      T('a plugin reload: the same, nothing made again', kids(r) === [VW, 'file-explorer:a', 'graph', HG].join() && !r.log.some(x => /^made/.test(x)), kids(r) + ' / ' + r.log.join());
+      r.settle(); await r.fire(); r.log.length = 0; await r.load(['left:search:q', 'left:empty', 'main:markdown']);
+      T('a workspace load: the wheel back first, the chosen ones after it, the rest right', kids(r) === [VW, 'file-explorer', 'graph', HG].join() && r.types('right').includes('search:q'), kids(r) + ' / ' + r.types('right'));
+      await r.w.current().chooseHome('tab');
+      T('given back after a workspace load: the wheel in a tab, the ones made for the drawer closed, search back on the left', r.types('main').includes(VW) && kids(r) === 'search:q' && !r.types('right').includes('search'), kids(r) + ' / ' + r.types('right') + ' / ' + r.types('main'));
+      r = await phone(['left:empty', 'main:graph', 'right:file-explorer:a', 'right:outline'], [HG, 'file-explorer', 'graph']); await r.plugin.chooseHome('tab');
+      T('given back: the ones made closed, Files back on the right with its state, nothing empty left', r.types('main').includes(VW) && kids(r) === '' && r.types('right').split(',').sort().join() === 'file-explorer:a,outline' && r.types('main').includes('graph'), kids(r) + ' / ' + r.types('right') + ' / ' + r.types('main'));
+      // already there, in the wrong order: put right without moving the wheel
+      r = await phone(['left:graph', 'left', 'left:file-explorer:a', 'left:bookmarks'], ['file-explorer', 'graph']);
+      T('out of order: the wheel stays put and is first, then Files and the graph, bookmarks goes right', kids(r) === [VW, 'file-explorer:a', 'graph'].join() && r.types('right') === 'bookmarks' && !r.log.includes('made left ' + VW), kids(r) + ' / ' + r.log.join());
+      T('nothing was made, only moved', !(r.plugin.device.drawerMade || []).length, JSON.stringify(r.plugin.device.drawerMade));
+      // one that cannot open
+      r = await phone(['left:empty'], [HG, 'file-explorer'], { noView: [HG] });
+      T('a chosen view that is not there to open is left out quietly', kids(r) === [VW, 'file-explorer'].join() && !r.w.notices.length, kids(r) + ' / ' + r.w.notices.join());
+      r.log.length = 0; r.settle(); r.leaves.push(r.leaf(r.left, 'tag')); await r.fire();
+      T('and not tried again when the layout changes', !r.log.some(x => x.includes(HG)) && kids(r) === [VW, 'file-explorer'].join() && r.types('right') === 'tag', kids(r) + ' / ' + r.log.join());
+      // the setting
+      r = await phone(['left:empty', 'right:search:q'], ['file-explorer']);
+      await r.plugin.setDrawer('search', true);
+      T('turned on: search comes over from the right, after Files', kids(r) === [VW, 'file-explorer', 'search:q'].join() && !r.types('right').includes('search'), kids(r) + ' / ' + r.types('right'));
+      await r.plugin.setDrawer('file-explorer', false);
+      T('turned off: Files goes right, not closed', kids(r) === [VW, 'search:q'].join() && r.types('right').includes('file-explorer'), kids(r) + ' / ' + r.types('right'));
+      // a computer keeps its own ways
+      r = await wheelIn(false, 'left', ['left', 'left:file-explorer:a'], { device: { home: 'left', props: false, closed: false, tablet: false, drawer: ['file-explorer'] } });
+      T('on a computer the setting does nothing', r.types('left') === VW && r.types('right').includes('file-explorer'), r.types('left') + ' / ' + r.types('right'));
+    }
     // the setting
     r = await freshIn(false, ['left:file-explorer:a', 'left:search:q', 'main:markdown:n']); r.settle();
     await r.plugin.chooseHome('left');

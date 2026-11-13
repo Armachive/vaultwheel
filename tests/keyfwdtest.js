@@ -24,6 +24,9 @@
       for (const c of ['c', 'x', 'v', 'z', 'd']) { k = await press(c, { ctrlKey: true }); T('ctrl + ' + c + ' stays with the wheel', k.length === 0, JSON.stringify(k)); }
       k = await press('F2'); T('F2 stays with the wheel', k.length === 0, JSON.stringify(k));
       window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+      // a press tells the plugin, so a phone's sidebar can put its list of views away
+      seen.length = 0; document.body.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerType: 'touch' })); await sl(60);
+      T('a press in the page tells Obsidian', seen.filter(m => m.t === 'press').length === 1, JSON.stringify(seen.map(m => m.t)));
       for (const [key, o] of [['ArrowUp', { ctrlKey: true }], ['ArrowDown', { altKey: true }], ['n', { ctrlKey: true, shiftKey: true }], ['a', {}], ['Control', { ctrlKey: true }]]) { k = await press(key, o); T(key + ' stays with the wheel', k.length === 0, JSON.stringify(k)); }
     } catch (err) { out.push('FAIL threw :: ' + err.message); }
     console.log('RESULTS\n' + out.join('\n'));

@@ -3953,7 +3953,8 @@ if (MODE === 'bridge') {
     ask();
   }, { capture: true, passive: true });
   addEventListener('wheel', ask, { capture: true, passive: true });
-  addEventListener('pointerdown', () => { clickedIn = true; }, { capture: true, passive: true });
+  // (and a press says so, so a phone's sidebar can put its list of views away: it would take the next touch low in the page)
+  addEventListener('pointerdown', () => { clickedIn = true; try { parent.postMessage({ vw: 1, t: 'press' }, '*'); } catch (e) { } }, { capture: true, passive: true });
   document.addEventListener('mouseout', e => {
     if (e.relatedTarget) return;
     lastAt = '';

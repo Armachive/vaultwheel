@@ -273,7 +273,7 @@ function world(mobile, desktop, fresh) {
     r = await wheelIn(false, 'none');
     T('desktop: closed stays closed', !r.log.length, r.log.join());
     r = await wheelIn(true, null);
-    T('mobile: starts in the left sidebar', r.log.join() === 'made left ' + VW + ',shown left', r.log.join());
+    T('mobile: starts in the left sidebar (the new tab shown before its page is waited for)', r.log.join() === 'shown left,made left ' + VW + ',shown left', r.log.join());
     r = await wheelIn(true, 'none');
     T('mobile: closed stays closed', !r.log.length, r.log.join());
     r = await wheelIn(false, 'none', null, { oldNone: true });
@@ -416,6 +416,9 @@ function world(mobile, desktop, fresh) {
       T('turned on: search comes over from the right, after Files', kids(r) === [VW, 'file-explorer', 'search:q'].join() && !r.types('right').includes('search'), kids(r) + ' / ' + r.types('right'));
       await r.plugin.setDrawer('file-explorer', false);
       T('turned off: Files goes right, not closed', kids(r) === [VW, 'search:q'].join() && r.types('right').includes('file-explorer'), kids(r) + ' / ' + r.types('right'));
+      // a wheel made in a phone's drawer is shown first: the drawer keeps only the tab it shows in the page, and the page would not load
+      r = await phone(['left:file-explorer:a', 'main'], ['file-explorer']); 
+      T('a wheel made in the drawer is shown before its page is waited for', r.log.indexOf('shown left') >= 0 && r.log.indexOf('shown left') < r.log.indexOf('made left ' + VW) && kids(r) === [VW, 'file-explorer:a'].join(), r.log.join() + ' / ' + kids(r));
       // a computer keeps its own ways
       r = await wheelIn(false, 'left', ['left', 'left:file-explorer:a'], { device: { home: 'left', props: false, closed: false, tablet: false, drawer: ['file-explorer'] } });
       T('on a computer the setting does nothing', r.types('left') === VW && r.types('right').includes('file-explorer'), r.types('left') + ' / ' + r.types('right'));
@@ -854,6 +857,15 @@ function world(mobile, desktop, fresh) {
     const v = asked.factory({}); v.loadPage = async () => { }; v.registerDomEvent = () => { }; v.registerEvent = () => { }; v.containerEl = {}; v.app = asked.app;
     await v.onOpen();
     T('a wheel opening looks at once', looked === 1, String(looked));
+    // a phone's sidebar list of views, open over the wheel: a press in the page puts it away, and a view anywhere else is left alone
+    const list = { tabOptionsCollapsed: false, setTabOptionsCollapsed(on) { this.tabOptionsCollapsed = on; } }, src = {};
+    v.leaf = { parent: list }; v.frame = { contentWindow: src }; asked.handle = () => { throw new Error('a press is not a request'); };
+    v.onMsg({ source: src, data: { vw: 1, t: 'press' } });
+    T('a press in the wheel puts the sidebar\'s list of views away', list.tabOptionsCollapsed === true);
+    v.onMsg({ source: src, data: { vw: 1, t: 'press' } });
+    T('and does nothing with it put away', list.tabOptionsCollapsed === true);
+    v.leaf = { parent: { children: [] } }; v.onMsg({ source: src, data: { vw: 1, t: 'press' } });
+    T('in a tab or a computer\'s sidebar a press is nothing', true);
     await r.w.app.plugins.disablePlugin(ID);
     T('turned off again: gone', !r.marked().length, r.marked().length + '');
   }

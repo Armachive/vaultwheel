@@ -286,6 +286,7 @@ class WheelView extends ItemView {
       if (m && m.vw && m.t === 'key' && this.frame) { const w = this.frame.ownerDocument.defaultView; w.dispatchEvent(new w.KeyboardEvent('keydown', { key: m.key, code: m.code, keyCode: m.which, which: m.which, ctrlKey: !!m.ctrl, shiftKey: !!m.shift, altKey: !!m.alt, metaKey: !!m.meta, bubbles: true, cancelable: true })); return; }
       if (m && m.vw && m.t === 'hover') { if (this.plugin.settings.hover) this.takeKeys(); return; }
       if (m && m.vw && m.t === 'leave') { this.giveKeys(!!m.keep); return; }
+      if (m && m.vw && m.t === 'press') { this.foldViews(); return; }
       if (m && m.vw && m.t === 'themeAsk') { this.plugin.sendThemes(this.frame.contentWindow); return; }
       this.plugin.handle(m, this.frame.contentWindow);
     };
@@ -356,6 +357,13 @@ class WheelView extends ItemView {
   // the pointer moved over the wheel: it takes the keyboard, so the arrows and the wheel's shortcuts work without a click
   // (what it has no use for, ctrl + P and the like, it hands on to Obsidian). not while you are typing in a field (a key in
   // the last second and a half), not while a dialog or menu is open, and not when Obsidian is not the window you are in
+  // a phone's sidebar opens its list of views at a touch on its selector and keeps it open, over the bottom of the view, until a
+  // view is picked or the selector is touched again. a touch meant for the wheel low down would pick another view, so a press in the
+  // wheel puts the list away first, as a touch anywhere else in Obsidian would be expected to
+  foldViews() {
+    const p = this.leaf && this.leaf.parent;
+    if (p && typeof p.setTabOptionsCollapsed === 'function' && p.tabOptionsCollapsed === false) p.setTabOptionsCollapsed(true);
+  }
   takeKeys() {
     const f = this.frame, doc = f && f.ownerDocument;
     if (!f || !f.contentWindow || !doc.hasFocus()) return;
@@ -601,7 +609,8 @@ module.exports = class VaultWheel extends Plugin {
   async setDrawer(type, on) {
     const d = this.device; d.drawer = (d.drawer || []).filter(t => t !== type); if (on) d.drawer.push(type);
     d.legacy = false; this.drawerFailed = null; this.saveDevice();
-    if (d.home === 'left') { d.closed = false; await this.toSidebar('left', false); }
+    // (a wheel that has to be made opens the sidebar too: its page does not load out of sight, and the rest would wait for it)
+    if (d.home === 'left') { d.closed = false; await this.toSidebar('left', this.placeOfWheel() !== 'left'); }
   }
   // the setting: the wheel goes there now, if it is open or the place is a sidebar. a choice here ends an old install's ways
   async chooseHome(v) {
@@ -876,6 +885,8 @@ module.exports = class VaultWheel extends Plugin {
         // (with a top group there the wheel gets a group of its own, or it would be one more tab up there)
         leaf = (side === 'left' && this.underTop()) || make.call(wk, false); if (!leaf) return;
         made = true;
+        // (a phone's sidebar keeps only the tab it shows in the page, and a page that is not in it never loads: shown first)
+        if (Platform.isMobile && leaf.parent && leaf.parent.selectTab) leaf.parent.selectTab(leaf);
         if (!await this.wheelInto(leaf, { active: false }) && all.length) {
           leaf.detach(); new Notice('VaultWheel could not open there, so it stayed where it was.');
           return;

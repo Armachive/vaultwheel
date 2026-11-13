@@ -66,14 +66,11 @@ default hotkeys of its own. You can bind any of its commands under Settings, Hot
 
 | Setting | Default | What |
 |---|---|---|
-| Where the wheel lives | In a tab | In a tab, Left sidebar alone, Left sidebar under Properties, or Right sidebar. The left sidebar choices move that sidebar's other tabs to the right one; going back puts them back. On a computer, under Properties keeps File properties (showing at first), All properties, Backlinks and Outgoing links in a group above the wheel, and a core plugin that is off is skipped. That group is set up once: after that its tabs and height are yours, and a panel you close stays out of it until you choose this again (Obsidian itself may open some of them on the right at its next start). Per device |
-| Right sidebar arrangement | Off | Computers only. Outline shows in the top group, the other tabs staying with it, and a file you choose stays open in a group below it, at about half the height. For a `.base` file you can name the view to show. Set up once: after that the tabs and heights are yours, and if you close the file it stays closed until this setting changes. Turned off, nothing moves back |
-| Tablet layout on a phone | Off | Phones only. Holds Obsidian in its tablet layout on a phone screen. This is not an Obsidian feature, and a future version of Obsidian may stop it working. Per device |
 | Hover takes the keyboard | On | The wheel takes the keyboard while the pointer is over it, and gives it back when the pointer leaves. Turned off, click the wheel first |
 | Sound effects | Off | Small sounds as the wheel turns. Songs and videos you play are not affected |
 
-Per device settings stay in this device's app storage, and the others go in the plugin's `data.json`, so they sync if your
-`.obsidian` folder does.
+The settings go in the plugin's `data.json`, so they sync if your `.obsidian` folder does. VaultWheel never opens, closes or moves
+any other view: drag the wheel into a sidebar like any tab, and Obsidian keeps it there.
 
 ## Privacy
 
@@ -97,8 +94,8 @@ Per device settings stay in this device's app storage, and the others go in the 
 
 ## Known limits
 
-- Turning the plugin off ends its view, as with any plugin's (Obsidian 1.15 leaves a tab that says so). If it has the left sidebar, choose **In a tab** first, so the tabs
-  it moved go back. Tabs it did not move are never touched.
+- Turning the plugin off ends its view, as with any plugin's (Obsidian 1.15 leaves a tab that says so).
+
 - Saved boards live in `boards.json` in the plugin's folder. A sync that only carries a plugin's usual files will not take them along.
 - The theme and a few view choices are kept in the app's storage, which every vault on a device shares.
 - The editors read a whole file into memory (up to 400 MB), which can be too much for a phone. Video export needs WebCodecs for an
